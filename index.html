@@ -889,6 +889,116 @@
       box-shadow: 0 8px 28px rgba(37, 211, 102, 0.55);
     }
 
+    /* ─── RESTAURANTE FÍSICO ────────────────────────────── */
+    #restaurante {
+      background: #0a0a0a;
+      position: relative;
+      overflow: hidden;
+    }
+
+    #restaurante::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse 60% 60% at 70% 50%, rgba(232, 50, 26, 0.06) 0%, transparent 65%);
+      pointer-events: none;
+    }
+
+    .restaurante-header {
+      text-align: center;
+      margin-bottom: 56px;
+    }
+
+    .restaurante-header .section-divider {
+      margin: 0 auto 0;
+    }
+
+    .restaurante-subtitle {
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: var(--red);
+      margin-bottom: 12px;
+    }
+
+    .restaurante-cards {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+      margin-bottom: 48px;
+    }
+
+    .restaurante-card {
+      background: #111111;
+      border: 1px solid rgba(255, 255, 255, 0.07);
+      border-radius: 18px;
+      padding: 36px 28px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      transition: border-color 0.3s ease, transform 0.3s ease, box-shadow 0.3s ease;
+    }
+
+    .restaurante-card:hover {
+      border-color: rgba(232, 50, 26, 0.4);
+      transform: translateY(-4px);
+      box-shadow: 0 12px 40px rgba(232, 50, 26, 0.1);
+    }
+
+    .restaurante-card-icon {
+      width: 52px;
+      height: 52px;
+      background: rgba(232, 50, 26, 0.1);
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      transition: background 0.3s ease;
+    }
+
+    .restaurante-card:hover .restaurante-card-icon {
+      background: rgba(232, 50, 26, 0.2);
+    }
+
+    .restaurante-card h3 {
+      font-family: 'Noto Serif JP', serif;
+      font-size: 19px;
+      font-weight: 700;
+    }
+
+    .restaurante-card p {
+      font-size: 14px;
+      color: var(--gray-text);
+      line-height: 1.65;
+    }
+
+    .restaurante-location {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      background: rgba(232, 50, 26, 0.07);
+      border: 1px solid rgba(232, 50, 26, 0.18);
+      border-radius: 14px;
+      padding: 20px 32px;
+      max-width: 520px;
+      margin: 0 auto;
+    }
+
+    .restaurante-location-icon {
+      color: var(--red);
+      flex-shrink: 0;
+    }
+
+    .restaurante-location-text {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--white);
+      letter-spacing: 0.2px;
+    }
+
     /* ─── MODAL CARDÁPIO ────────────────────────────────── */
     .modal-overlay {
       position: fixed;
@@ -1055,6 +1165,20 @@
 
       .menu-card-desc {
         display: none;
+      }
+
+      .restaurante-cards {
+        grid-template-columns: 1fr;
+        gap: 14px;
+      }
+
+      .restaurante-card {
+        padding: 28px 22px;
+      }
+
+      .restaurante-location {
+        padding: 16px 20px;
+        text-align: left;
       }
 
       .entrega-inner {
@@ -1302,6 +1426,40 @@
           </a>
         </div>
 
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── RESTAURANTE FÍSICO ──────────────────────────────── -->
+  <section id="restaurante">
+    <div class="container">
+      <div class="restaurante-header reveal">
+        <p class="restaurante-subtitle">Restaurante físico em Passo Fundo</p>
+        <h2 class="section-title">Venha nos visitar</h2>
+        <div class="section-divider"></div>
+      </div>
+      <div class="restaurante-cards">
+        <div class="restaurante-card reveal" style="transition-delay: 0.05s">
+          <div class="restaurante-card-icon">🍣</div>
+          <h3>Buffet de Sushi</h3>
+          <p>Sushi fresquinho servido por quilo, feito na hora com ingredientes selecionados.</p>
+        </div>
+        <div class="restaurante-card reveal" style="transition-delay: 0.15s">
+          <div class="restaurante-card-icon">🥗</div>
+          <h3>Buffet de Pokes</h3>
+          <p>Monte seu poke do jeito que preferir, com combinações personalizáveis.</p>
+        </div>
+        <div class="restaurante-card reveal" style="transition-delay: 0.25s">
+          <div class="restaurante-card-icon">📋</div>
+          <h3>Menu à la Carte</h3>
+          <p>Peça suas peças favoritas individualmente pelo nosso cardápio completo.</p>
+        </div>
+      </div>
+      <div class="restaurante-location reveal">
+        <svg class="restaurante-location-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+          <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
+        </svg>
+        <span class="restaurante-location-text">Bella Città Shopping Center — Passo Fundo, RS</span>
       </div>
     </div>
   </section>
