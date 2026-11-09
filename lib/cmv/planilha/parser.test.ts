@@ -146,6 +146,109 @@ describe("Leitor da aba diária — valores conhecidos de 08/11", () => {
   });
 });
 
+// -----------------------------------------------------------------------------
+// Aba REAL "08/11" da planilha "Caixas OJI Sushi", transcrita célula a célula
+// (lida pela API em 10/11/2026). Layout: TURNO 1 em B1 e TURNO 2 em I1, com o
+// bloco 2 começando em H; Restaurante | Despesas lado a lado; resumo na coluna E/L.
+// -----------------------------------------------------------------------------
+const ABA_REAL_0811 = `
+B1="TURNO 1"  I1="TURNO 2"
+A2="DATA:"  E2="OPERADOR"  I2="DATA:"  L2="OPERADOR"
+A4="Restaurante"  E4="Despesas"  H4="Restaurante"  L4="Despesas"
+A5="Dinheiro"  C5=53.97  E5="Mercado"  H5="Dinheiro"  J5=114.72  L5="Mercado"
+A6="Crédito"  C6=374.15  E6="Motoboy"  H6="Crédito"  J6=367.36  L6="Motoboy"
+A7="Débito"  C7=371.21  E7="Outros"  H7="Débito"  J7=549.22  L7="Outros"  M7=70
+A8="Pix"  C8=44.07  E8="Total"  F8=0  H8="Pix"  J8=428.66  L8="Total"  M8=70
+A9="Total"  C9=843.4  H9="Total"  J9=1459.9600000000003
+A11="Oji Tele"  E11="Total do Dia"  F11=2253.81  H11="Oji Tele"  L11="Total do Dia"  M11=2792.7700000000004
+A12="Qtd. Pedidos"  C12=17  E12="Total Pedidos"  F12=20  H12="Qtd. Pedidos"  J12=14  L12="Total Pedidos"  M12=18
+A13="Loja"  B13="Dinheiro"  E13="Dinheiro em Caixa"  F13=97.91  H13="Loja"  I13="Dinheiro"  L13="Dinheiro em Caixa"  M13=187.52999999999997
+B14="Cartão"  I14="Cartão"
+A15="Online"  C15=1222.53  H15="Online"  J15=1010.72
+A16="Total"  C16=1222.53  H16="Total"  J16=1010.72
+A18="Shakai Tele"  H18="Shakai Tele"
+A19="Qtd. Pedidos"  C19=2  H19="Qtd. Pedidos"  J19=1
+A20="Loja"  B20="Dinheiro"  C20=43.94  H20="Loja"  I20="Dinheiro"
+B21="Cartão"  I21="Cartão"
+A22="Online"  C22=91.56  H22="Online"  J22=89.9
+A23="Total"  C23=135.5  H23="Total"  J23=89.9
+A25="Wabi Tele"  H25="Wabi Tele"
+A26="Qtd. Pedidos"  C26=1  H26="Qtd. Pedidos"  J26=3
+A27="Loja"  B27="Dinheiro"  H27="Loja"  I27="Dinheiro"  J27=142.81
+B28="Cartão"  C28=52.38  I28="Cartão"
+A29="Online"  H29="Online"  J29=89.38
+A30="Total"  C30=52.38  H30="Total"  J30=232.19`;
+
+/** "A1=valor  B2=..." → grade */
+function gradeDe(texto: string): Grade {
+  const g: Grade = [];
+  for (const m of texto.matchAll(/([A-Z]+)(\d+)=("(?:[^"\\]|\\.)*"|[-\d.]+)/g)) {
+    const coluna = [...m[1]].reduce((a, ch) => a * 26 + ch.charCodeAt(0) - 64, 0) - 1;
+    const linha = Number(m[2]) - 1;
+    (g[linha] ??= [])[coluna] = m[3].startsWith('"') ? JSON.parse(m[3]) : Number(m[3]);
+  }
+  for (let i = 0; i < g.length; i++) g[i] ??= [];
+  return g;
+}
+
+describe("Leitor — aba real 08/11 (layout da planilha Caixas OJI Sushi)", () => {
+  const aba = lerAbaDiaria(gradeDe(ABA_REAL_0811));
+  const [t1, t2] = aba.turnos;
+
+  it("sem avisos", () => expect(aba.avisos).toEqual([]));
+
+  it("Turno 1: Restaurante 843,40 · Oji 1.222,53 · Shakai 135,50 · Wabi 52,38 = Total do Dia 2.253,81", () => {
+    expect(t1.origens.restaurante.campos).toMatchObject({ dinheiro: R(53.97), credito: R(374.15), debito: R(371.21), pix: R(44.07) });
+    expect(t1.origens.restaurante.totalCalculado).toBe(R(843.4));
+    expect(t1.origens.oji_tele.totalCalculado).toBe(R(1222.53));
+    expect(t1.origens.shakai_tele.campos).toMatchObject({ loja_dinheiro: R(43.94), online: R(91.56) });
+    expect(t1.origens.shakai_tele.totalCalculado).toBe(R(135.5));
+    expect(t1.origens.wabi_tele.campos.loja_cartao).toBe(R(52.38));
+    expect(t1.somaOrigens).toBe(R(2253.81));
+    expect(t1.totalDia).toBe(R(2253.81));
+    expect(t1.divergenciaTotalDia).toBe(0);
+  });
+
+  it("Turno 2: Restaurante 1.459,96 · Oji 1.010,72 · Shakai 89,90 · Wabi 232,19 = Total do Dia 2.792,77", () => {
+    expect(t2.origens.restaurante.totalCalculado).toBe(R(1459.96));
+    expect(t2.origens.oji_tele.totalCalculado).toBe(R(1010.72));
+    expect(t2.origens.shakai_tele.totalCalculado).toBe(R(89.9));
+    expect(t2.origens.wabi_tele.campos).toMatchObject({ loja_dinheiro: R(142.81), online: R(89.38) });
+    expect(t2.origens.wabi_tele.totalCalculado).toBe(R(232.19));
+    expect(t2.somaOrigens).toBe(R(2792.77));
+    expect(t2.divergenciaTotalDia).toBe(0);
+  });
+
+  it("dia = 5.046,58; nenhuma divergência de origem", () => {
+    expect(t1.somaOrigens + t2.somaOrigens).toBe(R(5046.58));
+    for (const t of aba.turnos) for (const o of Object.values(t.origens)) expect(o.divergencia).toBe(0);
+  });
+
+  it("pedidos, despesas e dinheiro em caixa", () => {
+    expect([t1.origens.oji_tele.qtdPedidos, t1.origens.shakai_tele.qtdPedidos, t1.origens.wabi_tele.qtdPedidos]).toEqual([17, 2, 1]);
+    expect([t2.origens.oji_tele.qtdPedidos, t2.origens.shakai_tele.qtdPedidos, t2.origens.wabi_tele.qtdPedidos]).toEqual([14, 1, 3]);
+    expect(t1.totalPedidos).toBe(20);
+    expect(t2.totalPedidos).toBe(18);
+    expect(t1.despesas).toEqual({ mercado: 0, motoboy: 0, outros: 0, total: 0 });
+    expect(t2.despesas).toEqual({ mercado: 0, motoboy: 0, outros: R(70), total: R(70) });
+    expect(t1.dinheiroEmCaixa).toBe(R(97.91));
+    expect(t2.dinheiroEmCaixa).toBe(R(187.53));
+  });
+
+  it("valores do resumo (coluna E/F) não vazam para as seções da esquerda", () => {
+    // "Dinheiro" da Loja do Oji (B13) está vazio; ao lado, na mesma linha, está "Dinheiro em Caixa" 97,91
+    expect(t1.origens.oji_tele.campos.loja_dinheiro).toBe(0);
+  });
+
+  it("o mesmo erro de fórmula (Total ≠ partes) seria detectado neste layout", () => {
+    const g = gradeDe(ABA_REAL_0811);
+    g[15][9] = 1024.72; // J16: Total do Oji Tele T2 com o erro de 14,00
+    const oji = lerAbaDiaria(g).turnos[1].origens.oji_tele;
+    expect(oji.totalCalculado).toBe(R(1010.72));
+    expect(oji.divergencia).toBe(R(14));
+  });
+});
+
 describe("Leitor: robustez a variações de layout", () => {
   const base = lerAbaDiaria(montarAba());
   const resumo = (a: ReturnType<typeof lerAbaDiaria>) =>

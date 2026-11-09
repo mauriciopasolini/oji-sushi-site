@@ -90,3 +90,15 @@ Registro cronológico. Cada item: decisão, motivo e data.
 59. **Linha "Mês"** = comprado nas semanas encerradas + semana atual + semanas futuras (`alocadoMes`). Na **semana atual** entra o maior entre orçamento e comprado, a mesma regra da base das semanas futuras (item 35). Assim um estouro da semana atual, que já foi descontado das semanas seguintes, não aparece como reserva.
 60. **Linha "Reserva (não alocado pela trava de 125%)"** = teto − Mês. Mês + Reserva = teto, sempre. Reserva negativa só acontece quando as compras já passaram do teto; nesse caso a linha se chama "Compras acima do teto", em vermelho.
 61. **Arredondamentos que fecham:** o planejado original passou a ser arredondado pelo acumulado (como a meta diária), então a soma das 4 semanas = teto exato. A soma das semanas futuras nunca passa da base disponível nem por 1 centavo. Teste de propriedade com 768 cenários (4 projeções × 32 datas × 6 conjuntos de compras): Mês + Reserva = teto; soma do planejado = teto; reserva ≥ 0 sempre que as compras não passaram do teto; semana encerrada = comprado. Os 8 testes obrigatórios continuam com os mesmos valores.
+
+## 2026-11-10 — Etapa 5 (parte 1): leitor da planilha validado com a planilha real
+
+62. **Chave do Google** em `GOOGLE_SERVICE_ACCOUNT_JSON` (JSON em base64), gravada por `npm run configurar-google -- "<arquivo.json>"`, que não exibe o conteúdo. Cliente: `@googleapis/sheets`, o pacote só da API Sheets, bem menor que `googleapis`; escopo `spreadsheets.readonly`; leitura com `UNFORMATTED_VALUE` (números chegam como número).
+63. **Layout real da aba diária** ("Caixas OJI Sushi"):
+    - "TURNO 1" em B1 e "TURNO 2" em I1, mas o bloco 2 começa em H. O bloco começa na menor coluna entre o título do turno e a seção "Restaurante" correspondente.
+    - Rótulos na coluna A/H, valores em C/J. A "Loja" tem os sub-rótulos Dinheiro/Cartão na coluna B/I.
+    - Restaurante | Despesas ficam lado a lado, e o resumo (Total do Dia, Total Pedidos, Dinheiro em Caixa) fica em E/F e L/M.
+    - Por isso cada seção é um **retângulo**: colunas até a próxima seção à direita, linhas até a próxima seção na mesma faixa de colunas. A busca do valor à direita não sai da seção, para o resumo não vazar para as origens.
+    - A aba 08/11 real virou teste fixo (`parser.test.ts`).
+64. **A planilha é anual:** 340 abas `DD/MM` num arquivo só (mais Metas e Motoboys). A sincronização filtra as abas pelo mês da competência; o ano vem da competência.
+65. **Validação 08/11:** T1 2.253,81 · T2 2.792,77 · dia 5.046,58, idênticos aos valores informados. Acumulado 01–08/11 pelas partes: **30.670,84**. A aba Metas mostra 30.779,84: são **R$ 109,00 a mais**, exatamente a soma da "Qtd. Pedidos" do Oji Tele T2 de 01 a 07/11 (21+15+12+16+13+15+17). Os valores "Vendido" da aba Metas são digitados à mão e foram copiados quando o Total do Oji Tele T2 ainda tinha o erro de fórmula (somava a Qtd. Pedidos). As abas diárias hoje estão corretas (`=SUM(J13:J15)`). O sistema usa a soma das partes, como manda o briefing.

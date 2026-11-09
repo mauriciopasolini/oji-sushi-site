@@ -170,11 +170,18 @@ export function lerAbaDiaria(grade: Grade): AbaLida {
   }
   turnos.sort((a, b) => a.c - b.c || a.l - b.l);
 
+  // O título "TURNO N" pode estar deslocado (ex.: centralizado em I1 com o bloco começando em H).
+  // O bloco começa na menor coluna entre o título e a seção "Restaurante" correspondente.
+  const restaurantes: Pos[] = [];
+  for (let l = 0; l < grade.length; l++) for (let c = 0; c < largura; c++) if (texto(l, c) === "restaurante") restaurantes.push({ l, c });
+  restaurantes.sort((x, y) => x.c - y.c || x.l - y.l);
+  const inicios = turnos.map((t, i) => Math.min(t.c, restaurantes[i]?.c ?? t.c));
+
   const blocos = turnos.map((t, i) => ({
     turno: t.n,
     l0: t.l,
-    c0: t.c,
-    c1: i + 1 < turnos.length && turnos[i + 1].c > t.c ? turnos[i + 1].c - 1 : largura - 1,
+    c0: inicios[i],
+    c1: i + 1 < turnos.length && inicios[i + 1] > inicios[i] ? inicios[i + 1] - 1 : largura - 1,
   }));
 
   const resultado: TurnoLido[] = [];
@@ -182,9 +189,12 @@ export function lerAbaDiaria(grade: Grade): AbaLida {
     const celulas: Record<string, string> = {};
     const dentro = (c: number) => c >= b.c0 && c <= b.c1;
 
-    /** Valor de um rótulo: 1ª célula numérica à direita (parando em outro texto); senão, logo abaixo. */
-    const valorDoRotulo = (p: Pos): { v: number; ref: string | null } => {
-      for (let c = p.c + 1; c <= b.c1; c++) {
+    /**
+     * Valor de um rótulo: 1ª célula numérica à direita, até `colFim` (parando em outro texto);
+     * senão, logo abaixo.
+     */
+    const valorDoRotulo = (p: Pos, colFim = b.c1): { v: number; ref: string | null } => {
+      for (let c = p.c + 1; c <= colFim; c++) {
         const bruto = valor(p.l, c);
         const n = numeroCentavos(bruto);
         if (n !== null) return { v: n, ref: a1(p.l, c) };
@@ -210,8 +220,15 @@ export function lerAbaDiaria(grade: Grade): AbaLida {
       if (melhor) achadas.push({ chave: s.chave, ...melhor });
       else avisos.push(`TURNO ${b.turno}: seção "${s.ancoras[0]}" não encontrada.`);
     }
-    achadas.sort((x, y) => x.l - y.l);
-    const fimDaSecao = (i: number) => (i + 1 < achadas.length ? achadas[i + 1].l : grade.length);
+    // Cada seção é um retângulo: colunas até a próxima seção à direita (seções podem ficar
+    // lado a lado, como Restaurante | Despesas); linhas até a próxima seção na mesma faixa de colunas.
+    const regiao = (sec: { l: number; c: number }) => {
+      const aDireita = achadas.filter((x) => x.c > sec.c).map((x) => x.c);
+      const colFim = aDireita.length ? Math.min(...aDireita) - 1 : b.c1;
+      const abaixo = achadas.filter((x) => x.l > sec.l && x.c >= sec.c && x.c <= colFim).map((x) => x.l);
+      const linhaFim = abaixo.length ? Math.min(...abaixo) - 1 : grade.length - 1;
+      return { colFim, linhaFim };
+    };
 
     // Resumo do turno (fora das seções): Total do Dia, Total Pedidos, Dinheiro em Caixa
     const rotuloResumo = (nomes: string[]): { v: number | null; ref: string | null } => {
@@ -230,17 +247,18 @@ export function lerAbaDiaria(grade: Grade): AbaLida {
     }
     const despesas: TurnoLido["despesas"] = { mercado: 0, motoboy: 0, outros: 0, total: null };
 
-    achadas.forEach((sec, i) => {
+    achadas.forEach((sec) => {
       const mapa = sec.chave === "restaurante" ? ROTULOS_RESTAURANTE : sec.chave === "despesas" ? ROTULOS_DESPESAS : ROTULOS_TELE;
+      const { colFim, linhaFim } = regiao(sec);
       const vistos = new Set<string>();
-      for (let l = sec.l + 1; l < fimDaSecao(i); l++)
-        for (let c = b.c0; c <= b.c1; c++) {
+      for (let l = sec.l + 1; l <= linhaFim; l++)
+        for (let c = sec.c; c <= colFim; c++) {
           const t = texto(l, c);
           const alvo = (mapa as Record<string, string>)[t];
           if (!alvo || vistos.has(alvo)) continue;
-          // "Total do Dia"/"Total Pedidos" não são o "Total" da seção (normalizam diferente, mas por garantia)
+          // "Total do Dia"/"Total Pedidos" normalizam diferente de "Total": não se confundem
           vistos.add(alvo);
-          const r = valorDoRotulo({ l, c });
+          const r = valorDoRotulo({ l, c }, colFim);
           if (r.ref) celulas[`${sec.chave}.${alvo}`] = r.ref;
           if (sec.chave === "despesas") {
             if (alvo === "total") despesas.total = r.ref ? r.v : null;

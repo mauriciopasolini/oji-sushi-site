@@ -4,7 +4,7 @@
 //   npm run testar-planilha -- --planilha "<link>" --aba 08/11          lê uma aba e mostra o que encontrou
 //   npm run testar-planilha -- --planilha "<link>" --aba 08/11 --json   imprime o JSON completo
 //   npm run testar-planilha -- --planilha "<link>" --aba 08/11 --grade  mostra também as células brutas
-//   npm run testar-planilha -- --planilha "<link>" --resumo             total por dia de todas as abas DD/MM
+//   npm run testar-planilha -- --planilha "<link>" --resumo --mes 11 [--ate 08]   total por dia das abas do mês
 
 import { parseArgs } from "node:util";
 import { auth, sheets } from "@googleapis/sheets";
@@ -18,6 +18,8 @@ const { values: a } = parseArgs({
     json: { type: "boolean", default: false },
     grade: { type: "boolean", default: false },
     resumo: { type: "boolean", default: false },
+    mes: { type: "string", default: "11" },
+    ate: { type: "string" },
   },
 });
 
@@ -62,9 +64,11 @@ try {
   console.log(`Abas: ${abas.length} (${diarias.length} diárias; ignoradas: ${abas.filter((t) => !dataDaAba(t, ano)).join(", ") || "nenhuma"})\n`);
 
   if (a.resumo) {
-    const grades = await lerAbas(diarias);
+    const mesNum = Number(a.mes);
+    const doMes = diarias.filter((t) => Number(dataDaAba(t, ano).slice(5, 7)) === mesNum && (!a.ate || Number(dataDaAba(t, ano).slice(8, 10)) <= Number(a.ate)));
+    const grades = await lerAbas(doMes);
     let acumulado = 0;
-    const linhas = diarias.map((t, i) => ({ t, data: dataDaAba(t, ano), aba: lerAbaDiaria(grades[i]) })).sort((x, y) => x.data.localeCompare(y.data));
+    const linhas = doMes.map((t, i) => ({ t, data: dataDaAba(t, ano), aba: lerAbaDiaria(grades[i]) })).sort((x, y) => x.data.localeCompare(y.data));
     for (const { t, aba } of linhas) {
       const total = aba.turnos.reduce((s, x) => s + x.somaOrigens, 0);
       acumulado += total;
