@@ -1,7 +1,7 @@
 // Tipos das linhas do banco usadas pelo app.
 // numeric chega do PostgREST como número JSON (ex.: 150) — sempre converter com centavos().
 
-export type TipoNota = "nfe" | "cupom" | "comanda" | "outro";
+export type TipoNota = "nfe" | "cupom" | "comanda" | "outro" | "sem_nota";
 export type FormaPagamento = "boleto" | "caixa" | "pix" | "outro";
 export type Conferencia = "pendente" | "conferida" | "divergente";
 
@@ -10,7 +10,11 @@ export const TIPOS_NOTA: { valor: TipoNota; rotulo: string }[] = [
   { valor: "cupom", rotulo: "Cupom" },
   { valor: "comanda", rotulo: "Comanda" },
   { valor: "outro", rotulo: "Outro" },
+  { valor: "sem_nota", rotulo: "Sem nota (aguardando)" },
 ];
+
+/** Compra registrada sem nota fiscal: fica "pendente de nota fiscal" até a nota chegar. */
+export const ehPendenteNF = (n: { tipo: TipoNota; status: string }) => n.tipo === "sem_nota" && n.status === "ativa";
 
 export const FORMAS_PAGAMENTO: { valor: FormaPagamento; rotulo: string }[] = [
   { valor: "boleto", rotulo: "Boleto" },
@@ -55,6 +59,7 @@ export type NotaRow = {
   conferencia: Conferencia;
   conferencia_obs: string | null;
   categoria_fora_do_padrao: boolean;
+  pendencia_justificativa: string | null;
   criado_por: string;
   criado_em: string;
   atualizado_em: string;

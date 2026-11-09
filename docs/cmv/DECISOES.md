@@ -144,3 +144,25 @@ Registro cronológico. Cada item: decisão, motivo e data.
     - Total maior ou igual à meta: verde (`text-green-700`) com ▲. Total menor que a meta: vermelho (`text-red-700`) com ▼. São os mesmos tons do painel, e o negrito continua. Na linha selecionada, que tem fundo escuro, usam-se as variantes claras (`-300`) para manter o contraste.
     - Ficam neutros: dia sem venda (—), dia "sem movimento" (registrado com total zero) e dia sem meta. Dias futuros não aparecem na grade.
     - A diferença ("+R$ 517,68 (+16,0%) vs. meta") aparece ao passar o mouse (só em dispositivos com mouse) ou ao tocar. Tocar fora ou apertar Esc fecha. O botão tem `aria-label` com o texto completo. A regra fica em `lib/cmv/meta-dia.ts` (`compararComMeta`), com testes.
+82. **Compra sem nota fiscal: tipo `sem_nota` ("Sem nota (aguardando)")** (pedido do Mauricio).
+    - **Pendente de nota fiscal** é um estado derivado (`tipo = 'sem_nota'` e `status = 'ativa'`, função `ehPendenteNF`), não um novo valor de `status`. A compra continua ativa e entra no orçamento pela data (rótulo "Data de chegada") como qualquer nota; o motor não mudou.
+    - O banco exige observação (`notas_sem_nota_com_observacao`). A foto continua obrigatória, mas pode ser romaneio, pedido, recibo ou a mercadoria.
+    - No formulário, a opção fica visível ("Mercadoria chegou sem nota fiscal"), sem depender de "Mais detalhes". Marcada, ela mostra a observação obrigatória e troca os rótulos da foto e da data.
+83. **Quando a nota chega, a mesma entrada é editada.** O botão "A nota fiscal chegou" abre `/editar?nf=1`, que já vem com o tipo NF-e e o motivo "Nota fiscal recebida" (o gestor pode trocar).
+    - Ao sair de `sem_nota`, o app exige foto nova e, para NF-e ou cupom, o número.
+    - A foto antiga continua no bucket (sem DELETE) e na auditoria (`antes.foto_path`). A página da nota lista as "Fotos anteriores".
+    - Segue as regras de qualquer edição: motivo obrigatório e conferência volta a pendente.
+    - A data **não** muda sozinha: o aviso orienta manter a data de chegada (é ela que define a semana do orçamento).
+84. **Pendentes no painel e na lista.**
+    - Painel: alerta "X compra(s) aguardando nota fiscal", que conta pendentes de qualquer mês e aparece mesmo olhando um mês fechado.
+    - Lista: faixa no topo, filtro "Aguardando nota fiscal" (todos os meses), linha com borda âmbar, "⏳ Aguardando NF" e a observação.
+    - A tela de conferência ainda não existe (Etapa 6). Ela vai usar o mesmo `ehPendenteNF`.
+85. **Aviso de possível duplicidade** (`lib/cmv/duplicidade.ts`, constantes `DUPLICIDADE.tolerancia = 0.05` e `DUPLICIDADE.janelaDias = 15`).
+    - Regra: outra nota **ativa** do mesmo fornecedor, com |novo − existente| ≤ 5% do existente (em centavos) e datas a até 15 dias, para trás ou para frente. Assim pega também o lançamento atrasado. Os limites são inclusivos.
+    - A checagem roda **antes** do envio da foto (ação `verificarDuplicidade`), assim não sobra arquivo órfão quando a pessoa desiste. Roda ao criar e, na edição, só se fornecedor, valor ou data mudaram. A própria nota é excluída.
+    - Ordem: "sem nota" primeiro, depois o valor mais próximo e por fim a data mais próxima.
+    - Botões: [Abrir a existente] e [É outra compra, salvar]. Se a existente é "sem nota", o aviso fica âmbar e o botão principal passa a ser "Editar a pendente (lançar a nota fiscal)".
+86. **Fechamento exige zero pendentes ou justificativa por pendente.** É garantido no banco: `fechar_mes` recusa enquanto houver nota ativa `sem_nota` do mês com `pendencia_justificativa` vazia.
+    - Só o admin grava a justificativa (trigger `notas_0_sem_nota`), na página da nota. Ela não é campo de negócio: não exige motivo nem reabre a conferência, mas fica auditada.
+    - A justificativa é limpa quando a nota deixa de ser `sem_nota`.
+    - A tela de fechamento (Etapa 7) vai mostrar isso como item do checklist.

@@ -3,7 +3,7 @@ import Link from "next/link";
 import { fimDoMes, listarCategorias, listarFornecedores } from "@/lib/cmv/dados";
 import { competenciaDe, hojeSP, montar, partes, semanasDoMes } from "@/lib/cmv/datas";
 import { centavos, formatarBRL } from "@/lib/cmv/dinheiro";
-import { type Conferencia, type NotaRow, ROTULO_CONFERENCIA } from "@/lib/cmv/tipos";
+import { type Conferencia, type NotaRow, ROTULO_CONFERENCIA, ehPendenteNF } from "@/lib/cmv/tipos";
 import { createClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "Notas" };
@@ -21,25 +21,28 @@ export default async function NotasPage({ searchParams }: { searchParams: Promis
   const competencia = /^\d{4}-\d{2}$/.test(f.mes ?? "") ? `${f.mes}-01` : competenciaDe(hoje);
   const semanas = semanasDoMes(competencia);
   const semana = semanas.find((s) => String(s.numero) === f.semana);
-  const status = f.status === "cancelada" || f.status === "todas" ? f.status : "ativa";
+  const status = f.status === "cancelada" || f.status === "todas" || f.status === "aguardando" ? f.status : "ativa";
+  // "Aguardando nota fiscal" mostra todas as pendentes, de qualquer mês.
+  const aguardando = status === "aguardando";
 
   let q = supabase
     .from("notas")
     .select("*, fornecedores(nome, revisado_em), categorias_cmv(nome)")
-    .gte("data_emissao", semana?.inicio ?? competencia)
-    .lte("data_emissao", semana?.fim ?? fimDoMes(competencia))
     .order("data_emissao", { ascending: false })
     .order("criado_em", { ascending: false })
     .limit(500);
+  if (aguardando) q = q.eq("tipo", "sem_nota").eq("status", "ativa");
+  else q = q.gte("data_emissao", semana?.inicio ?? competencia).lte("data_emissao", semana?.fim ?? fimDoMes(competencia));
   if (f.categoria) q = q.eq("categoria_id", f.categoria);
   if (f.fornecedor) q = q.eq("fornecedor_id", f.fornecedor);
   if (f.conferencia && f.conferencia in ROTULO_CONFERENCIA) q = q.eq("conferencia", f.conferencia);
-  if (status !== "todas") q = q.eq("status", status);
+  if (status === "ativa" || status === "cancelada") q = q.eq("status", status);
 
-  const [{ data: notasRaw, error }, categorias, fornecedores] = await Promise.all([
+  const [{ data: notasRaw, error }, categorias, fornecedores, { count: pendentesNF }] = await Promise.all([
     q,
     listarCategorias(supabase),
     listarFornecedores(supabase, { incluirInativos: true }),
+    supabase.from("notas").select("id", { count: "exact", head: true }).eq("tipo", "sem_nota").eq("status", "ativa"),
   ]);
   type Linha = NotaRow & { fornecedores: { nome: string; revisado_em: string | null } | null; categorias_cmv: { nome: string } | null };
   const notas = (notasRaw ?? []) as Linha[];
@@ -71,6 +74,12 @@ export default async function NotasPage({ searchParams }: { searchParams: Promis
           + Lançar nota
         </Link>
       </div>
+
+      {(pendentesNF ?? 0) > 0 && !aguardando && (
+        <Link href="/painel/cmv/notas?status=aguardando" className="block rounded-2xl border border-amber-400 bg-amber-50 px-4 py-3 text-amber-950">
+          <strong>⏳ {pendentesNF} compra(s) aguardando nota fiscal.</strong> <span className="text-sm underline">Ver pendentes</span>
+        </Link>
+      )}
 
       <form className="grid grid-cols-2 gap-2 sm:grid-cols-6" method="get">
         <select name="mes" defaultValue={competencia.slice(0, 7)} className={sel} aria-label="Mês">
@@ -115,6 +124,7 @@ export default async function NotasPage({ searchParams }: { searchParams: Promis
         <div className="flex gap-2">
           <select name="status" defaultValue={status} className={`${sel} flex-1`} aria-label="Situação">
             <option value="ativa">Ativas</option>
+            <option value="aguardando">Aguardando nota fiscal</option>
             <option value="cancelada">Canceladas</option>
             <option value="todas">Todas</option>
           </select>
@@ -125,13 +135,17 @@ export default async function NotasPage({ searchParams }: { searchParams: Promis
       {error && <p className="text-red-700">Erro ao carregar: {error.message}</p>}
 
       <p className="text-sm text-neutral-600">
+        {aguardando && "Aguardando nota fiscal (todos os meses) · "}
         {notas.length} nota(s) · total ativo <strong className="tabular-nums">{formatarBRL(total)}</strong>
       </p>
 
       <ul className="divide-y divide-neutral-100 overflow-hidden rounded-2xl border border-neutral-200 bg-white">
         {notas.map((n) => (
           <li key={n.id}>
-            <Link href={`/painel/cmv/notas/${n.id}`} className="flex items-center gap-3 px-3 py-3 hover:bg-neutral-50">
+            <Link
+              href={`/painel/cmv/notas/${n.id}`}
+              className={`flex items-center gap-3 px-3 py-3 ${ehPendenteNF(n) ? "border-l-4 border-amber-500 bg-amber-50 hover:bg-amber-100" : "hover:bg-neutral-50"}`}
+            >
               <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-neutral-200 bg-neutral-100">
                 {urls.get(n.foto_path) ? (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -151,12 +165,16 @@ export default async function NotasPage({ searchParams }: { searchParams: Promis
                   {dataBR(n.data_emissao)} · {n.categorias_cmv?.nome}
                   {n.categoria_fora_do_padrao && <span className="text-amber-700"> (categoria trocada)</span>}
                   {n.numero ? ` · nº ${n.numero}` : ""}
+                  {ehPendenteNF(n) && n.observacao ? ` · ${n.observacao}` : ""}
                 </p>
               </div>
               <div className="text-right">
                 <p className={`font-semibold tabular-nums ${n.status === "cancelada" ? "text-neutral-400 line-through" : ""}`}>
                   {formatarBRL(centavos(n.valor))}
                 </p>
+                {ehPendenteNF(n) ? (
+                  <p className="text-xs font-semibold text-amber-800">⏳ Aguardando NF</p>
+                ) : (
                 <p
                   className={`text-xs ${
                     n.status === "cancelada"
@@ -170,6 +188,7 @@ export default async function NotasPage({ searchParams }: { searchParams: Promis
                 >
                   {n.status === "cancelada" ? "Cancelada" : ROTULO_CONFERENCIA[n.conferencia]}
                 </p>
+                )}
               </div>
             </Link>
           </li>

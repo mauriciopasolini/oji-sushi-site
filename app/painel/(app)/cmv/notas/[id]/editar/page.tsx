@@ -9,8 +9,9 @@ import { carregarOpcoesNota } from "../../opcoes";
 
 export const metadata: Metadata = { title: "Editar nota" };
 
-export default async function EditarNotaPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function EditarNotaPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ nf?: string }> }) {
   const { id } = await params;
+  const { nf } = await searchParams;
   if (!RE_UUID.test(id)) notFound();
 
   const supabase = await createClient();
@@ -30,9 +31,10 @@ export default async function EditarNotaPage({ params }: { params: Promise<{ id:
       <Link href={`/painel/cmv/notas/${id}`} className="text-sm text-neutral-600 underline-offset-2 hover:underline">
         ← Voltar
       </Link>
-      <h1 className="mt-2 mb-4 text-2xl font-bold">Editar nota</h1>
+      <h1 className="mt-2 mb-4 text-2xl font-bold">{nf === "1" && nota.tipo === "sem_nota" ? "Lançar a nota fiscal" : "Editar nota"}</h1>
       <FormNota
         modo="editar"
+        converterSemNota={nf === "1"}
         hoje={hoje}
         {...opcoes}
         inicial={{

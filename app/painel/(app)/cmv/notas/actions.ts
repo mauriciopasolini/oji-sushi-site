@@ -2,8 +2,10 @@
 import { revalidatePath } from "next/cache";
 import { hojeSP, partes } from "@/lib/cmv/datas";
 import { centavos, paraDecimal } from "@/lib/cmv/dinheiro";
+import { type NotaComparavel, janelaDeBusca, notasParecidas } from "@/lib/cmv/duplicidade";
+import { validarSemNota } from "@/lib/cmv/sem-nota";
 import { getSessao } from "@/lib/cmv/sessao";
-import { FORMAS_PAGAMENTO, type FormaPagamento, RE_FOTO_PATH, RE_UUID, TIPOS_NOTA, type TipoNota } from "@/lib/cmv/tipos";
+import { FORMAS_PAGAMENTO, type FormaPagamento, RE_FOTO_PATH, RE_UUID, ROTULO_CONFERENCIA, type Conferencia, TIPOS_NOTA, type TipoNota } from "@/lib/cmv/tipos";
 import { createClient } from "@/lib/supabase/server";
 
 export type Resultado<T = undefined> = { ok: true; dados: T } | { ok: false; erro: string };
@@ -34,6 +36,7 @@ function mensagemDoBanco(msg: string): string {
   if (/row-level security|permission denied/i.test(msg)) return "Você não tem permissão para esta ação.";
   if (/fornecedores_nome_normalizado_uk/.test(msg)) return "Já existe um fornecedor com esse nome.";
   if (/notas_cancelamento_com_motivo/.test(msg)) return "Informe o motivo do cancelamento.";
+  if (/notas_sem_nota_com_observacao/.test(msg)) return "Compra sem nota: escreva uma observação.";
   return msg; // mensagens dos triggers já estão em português
 }
 
@@ -81,6 +84,9 @@ export async function criarNota(d: DadosNota): Promise<Resultado<{ id: string }>
   const v = validarNota(d, { exigirIdNaFoto: true });
   if (typeof v === "string") return { ok: false, erro: v };
 
+  const regraSemNota = validarSemNota({ tipoAnterior: null, tipo: d.tipo ?? "nfe", observacao: d.observacao, numero: d.numero, fotoTrocada: true });
+  if (regraSemNota) return { ok: false, erro: regraSemNota };
+
   const supabase = await createClient();
   if (!(await fotoExiste(supabase, d.foto_path))) return { ok: false, erro: "A foto não foi enviada. Tente de novo." };
 
@@ -117,9 +123,13 @@ export async function editarNota(d: DadosNota & { motivo: string }): Promise<Res
   if (typeof v === "string") return { ok: false, erro: v };
 
   const supabase = await createClient();
-  const { data: atual } = await supabase.from("notas").select("foto_path, status").eq("id", d.id).maybeSingle();
+  const { data: atual } = await supabase.from("notas").select("foto_path, status, tipo").eq("id", d.id).maybeSingle();
   if (!atual) return { ok: false, erro: "Nota não encontrada." };
   if (atual.status === "cancelada") return { ok: false, erro: "Nota cancelada não pode ser editada." };
+  const regraSemNota = validarSemNota({
+    tipoAnterior: atual.tipo as TipoNota, tipo: d.tipo ?? "nfe", observacao: d.observacao, numero: d.numero, fotoTrocada: d.foto_path !== atual.foto_path,
+  });
+  if (regraSemNota) return { ok: false, erro: regraSemNota };
   if (d.foto_path !== atual.foto_path && !(await fotoExiste(supabase, d.foto_path))) {
     return { ok: false, erro: "A nova foto não foi enviada. Tente de novo." };
   }
@@ -186,4 +196,86 @@ export async function criarFornecedor(nome: string, categoriaId: string): Promis
     .single();
   if (error) return { ok: false, erro: mensagemDoBanco(error.message) };
   return { ok: true, dados: data };
+}
+
+export type NotaParecida = {
+  id: string;
+  data: string;
+  fornecedor: string;
+  valor: number; // centavos
+  /** "aguardando nota fiscal", "conferida", "pendente de conferência", "divergente" */
+  situacao: string;
+  semNota: boolean;
+};
+
+/**
+ * Antes de enviar a foto e salvar: procura outra nota ativa do mesmo fornecedor, com valor
+ * até 5% diferente e data a até 15 dias (constantes em lib/cmv/duplicidade.ts).
+ */
+export async function verificarDuplicidade(d: { id?: string; fornecedor_id: string; data_emissao: string; valor: string }): Promise<Resultado<{ parecida: NotaParecida | null }>> {
+  const sessao = await getSessao();
+  if (!sessao?.perfil?.ativo) return { ok: false, erro: "Sessão expirada. Entre novamente." };
+  if (!RE_UUID.test(d.fornecedor_id ?? "") || !RE_DATA.test(d.data_emissao ?? "")) return { ok: true, dados: { parecida: null } };
+  let valor: number;
+  try {
+    valor = centavos(d.valor);
+  } catch {
+    return { ok: true, dados: { parecida: null } };
+  }
+  if (valor <= 0) return { ok: true, dados: { parecida: null } };
+
+  const supabase = await createClient();
+  const { de, ate } = janelaDeBusca(d.data_emissao);
+  const { data, error } = await supabase
+    .from("notas")
+    .select("id, fornecedor_id, data_emissao, valor, tipo, status, conferencia, fornecedores(nome)")
+    .eq("fornecedor_id", d.fornecedor_id)
+    .eq("status", "ativa")
+    .gte("data_emissao", de)
+    .lte("data_emissao", ate)
+    .limit(200);
+  if (error) return { ok: false, erro: mensagemDoBanco(error.message) };
+
+  type Linha = { id: string; fornecedor_id: string; data_emissao: string; valor: number; tipo: TipoNota; status: "ativa" | "cancelada"; conferencia: Conferencia; fornecedores: { nome: string } | null };
+  const linhas = (data ?? []) as unknown as Linha[];
+  const comparaveis: NotaComparavel[] = linhas.map((l) => ({
+    id: l.id, fornecedorId: l.fornecedor_id, data: l.data_emissao, valor: centavos(l.valor), tipo: l.tipo, status: l.status,
+  }));
+  const [melhor] = notasParecidas({ id: d.id, fornecedorId: d.fornecedor_id, data: d.data_emissao, valor }, comparaveis);
+  if (!melhor) return { ok: true, dados: { parecida: null } };
+  const l = linhas.find((x) => x.id === melhor.id)!;
+  const semNota = l.tipo === "sem_nota";
+  return {
+    ok: true,
+    dados: {
+      parecida: {
+        id: l.id,
+        data: l.data_emissao,
+        fornecedor: l.fornecedores?.nome ?? "?",
+        valor: centavos(l.valor),
+        situacao: semNota ? "aguardando nota fiscal" : l.conferencia === "pendente" ? "pendente de conferência" : ROTULO_CONFERENCIA[l.conferencia].toLowerCase(),
+        semNota,
+      },
+    },
+  };
+}
+
+/** Admin: justifica fechar o mês com a compra ainda sem nota fiscal (texto vazio remove). */
+export async function justificarPendencia(id: string, justificativa: string): Promise<Resultado> {
+  const sessao = await getSessao();
+  if (!sessao?.perfil?.ativo) return { ok: false, erro: "Sessão expirada. Entre novamente." };
+  if (sessao.perfil.papel !== "admin") return { ok: false, erro: "Somente o administrador pode justificar." };
+  if (!RE_UUID.test(id)) return { ok: false, erro: "Nota inválida." };
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("notas")
+    .update({ pendencia_justificativa: texto(justificativa) })
+    .eq("id", id)
+    .eq("tipo", "sem_nota")
+    .eq("status", "ativa")
+    .select("id");
+  if (error) return { ok: false, erro: mensagemDoBanco(error.message) };
+  if (!data?.length) return { ok: false, erro: "A compra não está mais aguardando nota fiscal." };
+  revalidatePath("/painel/cmv", "layout");
+  return { ok: true, dados: undefined };
 }
