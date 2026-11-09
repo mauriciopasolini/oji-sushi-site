@@ -84,7 +84,7 @@ function alertasDeCaixa(caixa: DadosCaixa, ehAdmin: boolean): Alerta[] {
       nivel: "aviso",
       titulo: `Planilha com ${caixa.divergencias.length} total(is) que não batem com as partes`,
       detalhe: `${textos.slice(0, 3).join(" · ")}${textos.length > 3 ? ` · e mais ${textos.length - 3}` : ""}. O sistema usa a soma das partes.`,
-      href: "/painel/cmv/vendas",
+      href: "/painel/cmv/vendas#divergencias",
     });
   }
   if (caixa.abasFaltando.length) {

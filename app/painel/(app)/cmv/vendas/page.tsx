@@ -44,6 +44,13 @@ export default async function VendasPage({ searchParams }: { searchParams: Promi
     new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(ts));
   const GATILHO: Record<string, string> = { manual: "botão", automatica: "automática", cron: "diária (04:00)" };
 
+  // Divergências da última sincronização bem-sucedida (soma das partes × totais da planilha)
+  type Div = { data: string; turno: number; tipo: "total_origem" | "total_dia"; origem?: string; diferenca: number; totalPlanilha?: number; totalCalculado?: number; totalDia?: number; somaOrigens?: number };
+  const ultimaOk = (syncs ?? []).find((s) => s.status === "ok");
+  const divergencias = (((ultimaOk?.resumo as { divergencias?: Div[] } | null)?.divergencias ?? []) as Div[]).sort((a, b) => a.data.localeCompare(b.data) || a.turno - b.turno);
+  const diasComDivergencia = new Set(divergencias.map((d) => d.data));
+  const ROTULO_ORIGEM: Record<string, string> = { restaurante: "Restaurante", oji_tele: "Oji Tele", shakai_tele: "Shakai Tele", wabi_tele: "Wabi Tele" };
+
   const pesosDia = Array<number>(7).fill(0);
   for (const p of pesos ?? []) pesosDia[p.dia_semana] = Number(p.peso);
   const metas = new Map(
@@ -118,6 +125,46 @@ export default async function VendasPage({ searchParams }: { searchParams: Promi
         )}
       </section>
 
+      {divergencias.length > 0 && (
+        <section id="divergencias" className="rounded-2xl border border-amber-300 bg-amber-50 p-4">
+          <h2 className="font-semibold text-amber-950">Divergências na planilha ({divergencias.length})</h2>
+          <p className="mt-1 text-sm text-amber-900">
+            Totais da planilha que não batem com a soma das partes. O sistema usa sempre a <strong>soma das partes</strong>; vale corrigir a fórmula na
+            planilha.
+          </p>
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full min-w-[32rem] text-sm">
+              <thead className="text-left text-amber-900/80">
+                <tr>
+                  <th className="py-1 font-medium">Dia</th>
+                  <th className="py-1 font-medium">Onde</th>
+                  <th className="py-1 text-right font-medium">Total na planilha</th>
+                  <th className="py-1 text-right font-medium">Soma das partes</th>
+                  <th className="py-1 text-right font-medium">Diferença</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-amber-200">
+                {divergencias.map((d, i) => (
+                  <tr key={i}>
+                    <td className="py-1.5">
+                      <Link href={`/painel/cmv/vendas?data=${d.data}`} className="underline-offset-2 hover:underline">
+                        {dataBR(d.data)}
+                      </Link>
+                    </td>
+                    <td className="py-1.5">
+                      Turno {d.turno} · {d.tipo === "total_origem" ? ROTULO_ORIGEM[d.origem ?? ""] ?? d.origem : "Total do Dia"}
+                    </td>
+                    <td className="py-1.5 text-right tabular-nums">{formatarBRL((d.tipo === "total_origem" ? d.totalPlanilha : d.totalDia) ?? 0)}</td>
+                    <td className="py-1.5 text-right tabular-nums">{formatarBRL((d.tipo === "total_origem" ? d.totalCalculado : d.somaOrigens) ?? 0)}</td>
+                    <td className="py-1.5 text-right font-semibold tabular-nums">{formatarBRL(d.diferenca)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
       {conflitos.length > 0 && (
         <section id="conflitos" className="space-y-2">
           <h2 className="font-semibold">Conflitos: venda manual × planilha ({conflitos.length})</h2>
@@ -148,6 +195,7 @@ export default async function VendasPage({ searchParams }: { searchParams: Promi
                       <Link href={`/painel/cmv/vendas?data=${d}`} className="block font-medium underline-offset-2 hover:underline">
                         {dataBR(d)} <span className={sel ? "text-neutral-300" : "text-neutral-500"}>{SEMANA[new Date(`${d}T12:00:00Z`).getUTCDay()]}</span>
                         {falta && <span className="ml-1 text-xs text-amber-800">sem venda</span>}
+                        {diasComDivergencia.has(d) && <span className={`ml-1 text-xs font-medium ${sel ? "text-amber-300" : "text-amber-700"}`}>divergência</span>}
                         {x.fontes.has("planilha") && <span className="ml-1 text-xs text-blue-700">planilha</span>}
                         {x.fontes.has("manual") && <span className={`ml-1 text-xs ${sel ? "text-neutral-300" : "text-neutral-500"}`}>manual</span>}
                       </Link>

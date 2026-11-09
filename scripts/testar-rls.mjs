@@ -132,9 +132,10 @@ try {
 
     console.log("\nGestor: vendas");
     await naoDeve(tx, "gestor NÃO grava venda com fonte 'planilha'", async (sp) => { await comoUsuario(sp, U.gestor); await sp`insert into public.vendas_turno (data, turno, origem, pix, fonte) values ('2026-11-08', 1, 'restaurante', 10, 'planilha')`; }, "row-level security");
+    // data sem vendas reais (o banco já tem as vendas sincronizadas de novembro)
     await deve(tx, "gestor grava venda manual; total calculado pelas partes", async (sp) => {
       await comoUsuario(sp, U.gestor);
-      return sp`insert into public.vendas_turno (data, turno, origem, dinheiro, pix) values ('2026-11-08', 1, 'restaurante', 100.10, 50.25) returning total_calculado`;
+      return sp`insert into public.vendas_turno (data, turno, origem, dinheiro, pix) values ('2027-06-15', 1, 'restaurante', 100.10, 50.25) returning total_calculado`;
     }, (r) => Number(r[0].total_calculado) === 150.35);
     await naoDeve(tx, "gestor NÃO fecha o mês", async (sp) => { await comoUsuario(sp, U.gestor); await sp`select public.fechar_mes(${nov})`; }, "administrador");
 

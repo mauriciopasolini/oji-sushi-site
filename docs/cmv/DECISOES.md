@@ -132,3 +132,8 @@ Registro cronológico. Cada item: decisão, motivo e data.
     - 1ª sincronização real pela rota do cron, rodando localmente: 01–08/11 = **R$ 30.670,84**, 64 linhas, 16 fechamentos, 0 conflitos, 0 divergências;
     - 2ª execução sem alterar nada (idempotente);
     - painel: aviso de provisório some, projeção R$ 100.150,65, Pescados disponível na S2 R$ 9.041,39 (limite de 125%).
+77. **Divergências da planilha visíveis em dois lugares** (pedido do Mauricio):
+    - no painel, como alerta com dia, turno, origem e valores, apontando para `Vendas#divergencias`;
+    - na tela Vendas, na seção "Divergências na planilha" (tabela com total da planilha × soma das partes × diferença) e com a marca "divergência" no dia da grade.
+
+    Fonte: o resumo da última sincronização bem-sucedida (é atualizado a cada sincronização; some quando a planilha é corrigida).
