@@ -20,7 +20,9 @@ const env = Object.fromEntries(
     .map((m) => [m[1], m[2]]),
 );
 
-const existentes = spawnSync("vercel", ["env", "ls"], { shell: true, encoding: "utf8" }).stdout ?? "";
+// Comandos montados só com nomes fixos (sem entrada do usuário); o valor vai pelo stdin, nunca na linha de comando.
+const vercel = (args, input) => spawnSync(`vercel ${args}`, { shell: true, input, encoding: "utf8" });
+const existentes = vercel("env ls").stdout ?? "";
 let falhas = 0;
 
 for (const nome of NOMES) {
@@ -36,7 +38,7 @@ for (const nome of NOMES) {
       console.log(`• ${nome} (${amb}): já existe — mantido (para trocar: vercel env rm ${nome} ${amb})`);
       continue;
     }
-    const r = spawnSync("vercel", ["env", "add", nome, amb, "--sensitive"], { shell: true, input: valor, encoding: "utf8" });
+    const r = vercel(`env add ${nome} ${amb} --sensitive`, valor);
     const ok = r.status === 0;
     if (!ok) falhas++;
     console.log(`${ok ? "✓" : "✗"} ${nome} (${amb})${ok ? "" : `: ${(r.stderr || r.stdout).split("\n").find((l) => /error/i.test(l)) ?? "falhou"}`}`);

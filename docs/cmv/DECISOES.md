@@ -127,3 +127,8 @@ Registro cronológico. Cada item: decisão, motivo e data.
 73. **Modo ensaio** (`ensaio: true`): lê a planilha e o banco e monta o plano sem gravar nada (nem o registro). É usado no teste de integração `npm run test:integracao`, com a planilha real: 01–08/11 = 30.670,84, 64 linhas, 16 fechamentos, 0 conflitos, 0 divergências.
 74. **Segredos na Vercel** (`SUPABASE_SERVICE_ROLE_KEY`, `GOOGLE_SERVICE_ACCOUNT_JSON`, `CRON_SECRET`, como "sensitive", em Production e Preview) são enviados pelo próprio Mauricio com `npm run vercel:segredos`. O script lê do `.env.local` e não exibe nada. O `CRON_SECRET` foi gerado localmente (32 bytes aleatórios).
 75. **O cron só roda em Production** (branch `main`). Até o merge, a sincronização no preview é pelo botão ou pela automática.
+76. **Entrada em uso (09/11/2026):**
+    - dados de teste limpos com `limpar-teste --vendas` (1 nota cancelada e 1 foto);
+    - 1ª sincronização real pela rota do cron, rodando localmente: 01–08/11 = **R$ 30.670,84**, 64 linhas, 16 fechamentos, 0 conflitos, 0 divergências;
+    - 2ª execução sem alterar nada (idempotente);
+    - painel: aviso de provisório some, projeção R$ 100.150,65, Pescados disponível na S2 R$ 9.041,39 (limite de 125%).
