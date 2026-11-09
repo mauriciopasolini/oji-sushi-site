@@ -299,25 +299,43 @@ export default async function CmvPage({ searchParams }: { searchParams: Promise<
                       {s.situacao === "atual" && <span className="ml-1 rounded bg-neutral-900 px-1.5 py-0.5 text-[10px] text-white">atual</span>}
                     </td>
                     <td className="py-2 text-right tabular-nums">{formatarBRL(s.planejadoOriginal)}</td>
-                    <td className={`py-2 text-right tabular-nums ${s.orcamento < s.planejadoOriginal && s.situacao !== "encerrada" ? "text-red-700" : ""}`}>
-                      {formatarBRL(s.orcamento)}
+                    <td
+                      className={`py-2 text-right tabular-nums ${
+                        s.situacao === "encerrada" ? "font-normal text-neutral-400" : s.orcamentoAtual < s.planejadoOriginal ? "text-red-700" : ""
+                      }`}
+                      title={s.situacao === "encerrada" ? "Semana encerrada: vale o que foi comprado; a sobra já foi redistribuída" : undefined}
+                    >
+                      {formatarBRL(s.orcamentoAtual)}
                     </td>
                     <td className={`py-2 text-right tabular-nums ${s.comprado > s.orcamento ? "text-red-700" : ""}`}>{formatarBRL(s.comprado)}</td>
                   </tr>
                 ))}
               </tbody>
-              <tfoot className="border-t border-neutral-200 font-semibold">
-                <tr>
+              <tfoot className="border-t border-neutral-200">
+                <tr className="font-semibold">
                   <td className="py-2">Mês</td>
-                  <td className="py-2 text-right tabular-nums">{formatarBRL(catTabela.teto)}</td>
-                  <td className="py-2 text-right tabular-nums">{formatarBRL(catTabela.semanas.reduce((a, s) => a + s.orcamento, 0))}</td>
+                  <td className="py-2 text-right tabular-nums">{formatarBRL(catTabela.semanas.reduce((a, s) => a + s.planejadoOriginal, 0))}</td>
+                  <td className="py-2 text-right tabular-nums">{formatarBRL(catTabela.alocadoMes)}</td>
                   <td className="py-2 text-right tabular-nums">{formatarBRL(catTabela.compradoMes)}</td>
+                </tr>
+                <tr className={catTabela.reserva < 0 ? "text-red-700" : "text-neutral-600"}>
+                  <td className="py-2">{catTabela.reserva < 0 ? "Compras acima do teto" : "Reserva (não alocado pela trava de 125%)"}</td>
+                  <td className="py-2 text-right">—</td>
+                  <td className="py-2 text-right tabular-nums">{formatarBRL(catTabela.reserva)}</td>
+                  <td className="py-2 text-right">—</td>
+                </tr>
+                <tr className="border-t border-neutral-200 font-semibold">
+                  <td className="py-2">Teto do mês</td>
+                  <td className="py-2 text-right tabular-nums">{formatarBRL(catTabela.teto)}</td>
+                  <td className="py-2 text-right tabular-nums">{formatarBRL(catTabela.alocadoMes + catTabela.reserva)}</td>
+                  <td className="py-2 text-right" />
                 </tr>
               </tfoot>
             </table>
           </div>
           <p className="mt-2 text-xs text-neutral-500">
-            Orçamento atual: redistribui o saldo pelas semanas que faltam, com limite de 125% do planejado. Estouros reduzem as semanas seguintes.
+            Semanas encerradas valem pelo que foi comprado (a sobra já foi redistribuída). O saldo é redistribuído pelas semanas que faltam, com
+            limite de 125% do planejado; o que a trava não deixa alocar fica na reserva. Estouros reduzem as semanas seguintes.
           </p>
         </section>
       )}

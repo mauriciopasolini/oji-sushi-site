@@ -83,3 +83,10 @@ Registro cronológico. Cada item: decisão, motivo e data.
     - alertas e botões flutuantes;
     - navegação por mês (`?mes=AAAA-MM`), sem botões de lançamento em mês passado ou fechado.
 57. **Limpeza de dados de teste** (`npm run limpar-teste`). Funciona em dois passos: o 1º só lista e gera um código ligado ao plano exato (hash dos ids); o 2º exige `--confirmar <código>`, e se os dados mudarem no meio o código não confere. Apaga todas as notas (e a auditoria delas), os fornecedores fora do cadastro inicial, os meses criados automaticamente que ficarem sem uso e todas as fotos. Com `--vendas`, apaga também as vendas. Recusa rodar se houver mês fechado. As proteções contra exclusão (triggers) são desligadas só dentro da transação. `--ensaio` executa e desfaz, para conferir.
+
+## 2026-11-10 — Ajuste da tabela semanal (pedido do Mauricio)
+
+58. **Semana encerrada:** a coluna "Orçamento atual" mostra o **comprado** (em cinza), porque a sobra já foi redistribuída. O orçamento original da semana continua no motor (`orcamento`) e é usado no ritmo. A tela usa `orcamentoAtual`.
+59. **Linha "Mês"** = comprado nas semanas encerradas + semana atual + semanas futuras (`alocadoMes`). Na **semana atual** entra o maior entre orçamento e comprado, a mesma regra da base das semanas futuras (item 35). Assim um estouro da semana atual, que já foi descontado das semanas seguintes, não aparece como reserva.
+60. **Linha "Reserva (não alocado pela trava de 125%)"** = teto − Mês. Mês + Reserva = teto, sempre. Reserva negativa só acontece quando as compras já passaram do teto; nesse caso a linha se chama "Compras acima do teto", em vermelho.
+61. **Arredondamentos que fecham:** o planejado original passou a ser arredondado pelo acumulado (como a meta diária), então a soma das 4 semanas = teto exato. A soma das semanas futuras nunca passa da base disponível nem por 1 centavo. Teste de propriedade com 768 cenários (4 projeções × 32 datas × 6 conjuntos de compras): Mês + Reserva = teto; soma do planejado = teto; reserva ≥ 0 sempre que as compras não passaram do teto; semana encerrada = comprado. Os 8 testes obrigatórios continuam com os mesmos valores.

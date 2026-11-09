@@ -297,6 +297,53 @@ describe("Projeção: casos de borda", () => {
   });
 });
 
+describe("Tabela semanal: Mês + Reserva = teto", () => {
+  it("caso relatado: sem vendas (projeção = meta) e S1 encerrada sem compras", () => {
+    const o = calcularOrcamentoCategoria({ config: novembro, categoria: PESCADOS, projecao: novembro.metaVenda, notas: [], hoje: "2026-11-09" });
+    perto(o.teto, R(25333.33), 1);
+    // antes da correção, somar os orçamentos de todas as semanas passava do teto
+    expect(o.semanas.reduce((a, s) => a + s.orcamento, 0)).toBeGreaterThan(o.teto);
+    // encerrada mostra o comprado (a sobra já foi redistribuída)
+    expect(o.semanas[0].situacao).toBe("encerrada");
+    expect(o.semanas[0].orcamentoAtual).toBe(0);
+    expect(o.alocadoMes).toBe(o.semanas[1].orcamento + o.semanas[2].orcamento + o.semanas[3].orcamento);
+    expect(o.reserva).toBeGreaterThan(0); // a trava de 125% deixou parte sem alocar
+    expect(o.alocadoMes + o.reserva).toBe(o.teto);
+  });
+
+  it("estouro na semana atual não aparece como reserva", () => {
+    const p = projecaoNovembro();
+    const o = calcularOrcamentoCategoria({ config: novembro, categoria: PESCADOS, projecao: p.projecao, notas: [nota("2026-11-03", 8000), nota("2026-11-09", 9000)], hoje: "2026-11-10" });
+    expect(o.estouroSemana).toBe(true);
+    expect(o.reserva).toBe(0);
+    expect(o.alocadoMes).toBe(o.teto);
+  });
+
+  it("propriedade: em todos os cenários, Mês + Reserva = teto; e a reserva só fica negativa se as compras passaram do teto", () => {
+    // gerador pseudoaleatório determinístico (os cenários são sempre os mesmos)
+    let semente = 20261109;
+    const aleatorio = () => ((semente = (semente * 1103515245 + 12345) % 2 ** 31) / 2 ** 31);
+    const dias = ["2026-10-31", ...Array.from({ length: 30 }, (_, i) => `2026-11-${String(i + 1).padStart(2, "0")}`), "2026-12-02"];
+    let cenarios = 0;
+    for (const projecaoReais of [60000, 95000, 100273.65, 140000]) {
+      for (const hoje of dias) {
+        for (let rep = 0; rep < 6; rep++) {
+          const notas = Array.from({ length: Math.floor(aleatorio() * 9) }, () =>
+            nota(`2026-11-${String(1 + Math.floor(aleatorio() * 30)).padStart(2, "0")}`, Math.round(aleatorio() * 900000) / 100),
+          );
+          const o = calcularOrcamentoCategoria({ config: novembro, categoria: PESCADOS, projecao: R(projecaoReais), notas, hoje });
+          expect(o.alocadoMes + o.reserva).toBe(o.teto);
+          expect(o.semanas.reduce((a, s) => a + s.planejadoOriginal, 0)).toBe(o.teto);
+          if (o.compradoMes <= o.teto) expect(o.reserva).toBeGreaterThanOrEqual(0);
+          for (const s of o.semanas) if (s.situacao === "encerrada") expect(s.orcamentoAtual).toBe(s.comprado);
+          cenarios++;
+        }
+      }
+    }
+    expect(cenarios).toBe(4 * 32 * 6);
+  });
+});
+
 describe("Ritmo de compra (semáforo)", () => {
   it("limiares: ≤ 0% verde, ≤ 10% amarelo, > 10% vermelho", () => {
     expect(corDoRitmo(-0.2)).toBe("verde");

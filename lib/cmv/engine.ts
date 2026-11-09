@@ -208,7 +208,13 @@ export type CorSemaforo = "verde" | "amarelo" | "vermelho";
 export type SemanaOrcamento = Semana & {
   situacao: SituacaoSemana;
   planejadoOriginal: Centavos;
+  /** Orçamento calculado para a semana (encerradas: como foi no início dela; usado no ritmo). */
   orcamento: Centavos;
+  /**
+   * O que a tabela mostra como "orçamento atual": encerrada = comprado (a sobra já foi
+   * redistribuída); atual e futuras = orçamento.
+   */
+  orcamentoAtual: Centavos;
   comprado: Centavos;
 };
 
@@ -230,6 +236,16 @@ export type OrcamentoCategoria = {
   /** comprou mais que o teto do mês */
   estouroMes: boolean;
   semanas: SemanaOrcamento[];
+  /**
+   * Total alocado no mês = comprado nas semanas encerradas
+   *   + max(orçamento, comprado) da semana atual + orçamento das semanas futuras.
+   */
+  alocadoMes: Centavos;
+  /**
+   * teto − alocadoMes: o que a trava de acúmulo (125%) deixou sem alocar.
+   * Negativo só quando as compras já passaram do teto. alocadoMes + reserva = teto, sempre.
+   */
+  reserva: Centavos;
   ritmo: Ritmo;
 };
 
@@ -276,7 +292,11 @@ export function calcularOrcamentoCategoria(params: {
   const teto = Math.round(projecao * categoria.pctMeta);
   const comprado = semanas.map((s) => soma(notas.filter((n) => semanaDaData(n.data) === s.numero).map((n) => n.valor)));
   const compradoMes = soma(comprado);
-  const planejado = pesos.map((p) => Math.round((teto * p) / totalPesos));
+  // Arredondado pelo acumulado (como a meta diária): a soma das 4 semanas fecha exatamente no teto.
+  const planejado = pesos.map((_, i) => {
+    const ate = (n: number) => Math.round((teto * soma(pesos.slice(0, n))) / totalPesos);
+    return ate(i + 1) - ate(i);
+  });
   const tetoSemana = planejado.map((p) => Math.round(p * config.limiteAcumuloPct));
 
   const { semanaAtual, diasDecorridosSemana, encerrado } = situacaoNoMes(config.competencia, hoje);
@@ -293,25 +313,41 @@ export function calcularOrcamentoCategoria(params: {
   };
 
   const orcamentos: number[] = [];
+  let baseFuturas = 0;
   for (let j = 1; j <= 4; j++) {
     if (j <= k) {
       orcamentos.push(orcamentoNoInicio(j));
     } else {
       // futura: o que sobra depois da semana atual, distribuído pelas semanas seguintes
-      const base = teto - compradoAntes(k) - Math.max(comprado[k - 1], orcamentos[k - 1]);
+      baseFuturas = teto - compradoAntes(k) - Math.max(comprado[k - 1], orcamentos[k - 1]);
       const pesosFuturos = soma(pesos.slice(k));
-      const valor = base > 0 && pesosFuturos > 0 ? Math.round((base * pesos[j - 1]) / pesosFuturos) : 0;
+      const valor = baseFuturas > 0 && pesosFuturos > 0 ? Math.round((baseFuturas * pesos[j - 1]) / pesosFuturos) : 0;
       orcamentos.push(naoNegativo(Math.min(valor, tetoSemana[j - 1])));
     }
   }
+  // O arredondamento semana a semana não pode alocar mais que a base (nem 1 centavo).
+  if (k < 4) {
+    const excesso = soma(orcamentos.slice(k)) - naoNegativo(baseFuturas);
+    if (excesso > 0) orcamentos[3] = naoNegativo(orcamentos[3] - excesso);
+  }
 
-  const semanasOrc: SemanaOrcamento[] = semanas.map((s, i) => ({
-    ...s,
-    situacao: s.numero < k ? "encerrada" : s.numero === k ? "atual" : "futura",
-    planejadoOriginal: planejado[i],
-    orcamento: orcamentos[i],
-    comprado: comprado[i],
-  }));
+  const semanasOrc: SemanaOrcamento[] = semanas.map((s, i) => {
+    const situacao: SituacaoSemana = s.numero < k ? "encerrada" : s.numero === k ? "atual" : "futura";
+    return {
+      ...s,
+      situacao,
+      planejadoOriginal: planejado[i],
+      orcamento: orcamentos[i],
+      orcamentoAtual: situacao === "encerrada" ? comprado[i] : orcamentos[i],
+      comprado: comprado[i],
+    };
+  });
+
+  // Semana atual entra pelo maior entre orçamento e comprado (mesma regra da base das
+  // semanas futuras): um estouro da semana já foi descontado das próximas e não é reserva.
+  const alocadoMes = soma(
+    semanasOrc.map((s) => (s.situacao === "encerrada" ? s.comprado : s.situacao === "atual" ? Math.max(s.orcamento, s.comprado) : s.orcamento)),
+  );
 
   const saldoInicioSemana = encerrado ? teto - compradoMes : teto - compradoAntes(k);
   const orcamentoSemana = encerrado ? 0 : orcamentos[k - 1];
@@ -339,6 +375,8 @@ export function calcularOrcamentoCategoria(params: {
     estouroSemana: !encerrado && disponivelAgora < 0,
     estouroMes: compradoMes > teto,
     semanas: semanasOrc,
+    alocadoMes,
+    reserva: teto - alocadoMes,
     ritmo: { esperadoAteHoje, comprado: compradoMes, desvio, desvioPct, cor: corDoRitmo(desvioPct) },
   };
 }
