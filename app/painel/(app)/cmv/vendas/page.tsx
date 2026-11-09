@@ -9,7 +9,9 @@ import { type CampoValor, type Origem, TODOS_CAMPOS } from "@/lib/cmv/vendas";
 import { createClient } from "@/lib/supabase/server";
 import { emailContaServico } from "@/lib/cmv/planilha/google";
 import { BotaoSincronizar, ConfigPlanilha, type ConflitoTela, ListaConflitos } from "../sincronizacao/componentes";
+import { compararComMeta } from "@/lib/cmv/meta-dia";
 import { EditorDia, type VendaExistente } from "./editor-dia";
+import { TotalDia } from "./total-dia";
 
 export const metadata: Metadata = { title: "Vendas" };
 
@@ -202,7 +204,13 @@ export default async function VendasPage({ searchParams }: { searchParams: Promi
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums">{x.t1 ? formatarBRL(x.t1) : "—"}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{x.t2 ? formatarBRL(x.t2) : "—"}</td>
-                    <td className="px-3 py-2 text-right font-semibold tabular-nums">{diasRegistrados.has(d) ? formatarBRL(x.total) : "—"}</td>
+                    <td className="px-3 py-2 text-right font-semibold tabular-nums">
+                      {(() => {
+                        if (!diasRegistrados.has(d)) return "—";
+                        const comp = compararComMeta(x.total, metas.get(d) ?? 0, true);
+                        return comp ? <TotalDia valor={formatarBRL(x.total)} comparacao={comp} selecionada={sel} /> : formatarBRL(x.total);
+                      })()}
+                    </td>
                     <td className={`px-3 py-2 text-right tabular-nums ${sel ? "text-neutral-300" : "text-neutral-500"}`}>{formatarBRL(metas.get(d) ?? 0)}</td>
                   </tr>
                 );
