@@ -7,6 +7,8 @@ import { metasDiarias } from "@/lib/cmv/engine";
 import { getSessao } from "@/lib/cmv/sessao";
 import { type CampoValor, type Origem, TODOS_CAMPOS } from "@/lib/cmv/vendas";
 import { createClient } from "@/lib/supabase/server";
+import { emailContaServico } from "@/lib/cmv/planilha/google";
+import { BotaoSincronizar, ConfigPlanilha, type ConflitoTela, ListaConflitos } from "../sincronizacao/componentes";
 import { EditorDia, type VendaExistente } from "./editor-dia";
 
 export const metadata: Metadata = { title: "Vendas" };
@@ -23,12 +25,24 @@ export default async function VendasPage({ searchParams }: { searchParams: Promi
   const competencia = /^\d{4}-\d{2}$/.test(sp.mes ?? "") ? `${sp.mes}-01` : competenciaDe(sp.data ?? hoje);
   const fim = fimDoMes(competencia);
 
-  const [{ data: vendas }, { data: fech }, { data: mes }, { data: pesos }] = await Promise.all([
+  const ehAdmin = sessao?.perfil?.papel === "admin";
+  const [{ data: vendas }, { data: fech }, { data: mes }, { data: pesos }, { data: conflitosRaw }, { data: syncs }, { data: planilhaAnterior }] = await Promise.all([
     supabase.from("vendas_turno").select("*").gte("data", competencia).lte("data", fim),
     supabase.from("fechamento_turno").select("data, turno, sincronizado_em").gte("data", competencia).lte("data", fim),
-    supabase.from("meses").select("meta_venda, status").eq("competencia", competencia).maybeSingle(),
+    supabase.from("meses").select("meta_venda, status, planilha_url").eq("competencia", competencia).maybeSingle(),
     supabase.from("pesos_dia_semana").select("dia_semana, peso").order("dia_semana"),
+    supabase.from("conflitos_venda").select("*").is("resolucao", null).gte("data", competencia).lte("data", fim).order("data"),
+    supabase.from("sincronizacoes").select("id, gatilho, status, iniciado_em, resumo, erro").eq("competencia", competencia).order("iniciado_em", { ascending: false }).limit(5),
+    supabase.from("meses").select("planilha_url").not("planilha_url", "is", null).lte("competencia", competencia).order("competencia", { ascending: false }).limit(1).maybeSingle(),
   ]);
+  const conflitos: ConflitoTela[] = (conflitosRaw ?? []).map((c) => ({
+    id: c.id, data: c.data, turno: c.turno, origem: c.origem,
+    totalManual: centavos(c.total_manual), totalPlanilha: centavos(c.total_planilha),
+    manual: c.valores_manual, planilha: c.valores_planilha,
+  }));
+  const quando = (ts: string) =>
+    new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(ts));
+  const GATILHO: Record<string, string> = { manual: "botão", automatica: "automática", cron: "diária (04:00)" };
 
   const pesosDia = Array<number>(7).fill(0);
   for (const p of pesos ?? []) pesosDia[p.dia_semana] = Number(p.peso);
@@ -75,10 +89,41 @@ export default async function VendasPage({ searchParams }: { searchParams: Promi
           Total no mês <strong className="tabular-nums">{formatarBRL(totalMes)}</strong>
         </p>
       </div>
-      <p className="rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-900">
-        Por enquanto as vendas são lançadas à mão. A leitura automática da planilha de fechamento de caixa entra na próxima etapa; lançamentos
-        manuais nunca são sobrescritos por ela sem confirmação.
-      </p>
+      <section className="rounded-2xl border border-neutral-200 bg-white p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="font-semibold">Planilha de fechamento de caixa</h2>
+          {!mesFechado && <BotaoSincronizar />}
+        </div>
+        <p className="mt-1 text-sm text-neutral-600">
+          As vendas são lidas da planilha (soma das partes de cada origem). Lançamentos manuais nunca são sobrescritos: se a planilha trouxer outro
+          valor, aparece um conflito para o administrador decidir.
+        </p>
+        {syncs && syncs.length > 0 && (
+          <ul className="mt-3 space-y-1 text-xs text-neutral-600">
+            {syncs.map((s) => (
+              <li key={s.id}>
+                <span className={s.status === "erro" ? "text-red-700" : s.status === "ok" ? "text-green-700" : ""}>●</span> {quando(s.iniciado_em)} ·{" "}
+                {GATILHO[s.gatilho] ?? s.gatilho} · {s.status === "erro" ? s.erro : (s.resumo as { mensagem?: string } | null)?.mensagem ?? s.status}
+              </li>
+            ))}
+          </ul>
+        )}
+        {ehAdmin && (
+          <details className="mt-3">
+            <summary className="cursor-pointer text-sm font-medium">Planilha do mês</summary>
+            <div className="mt-2">
+              <ConfigPlanilha competencia={competencia} url={mes?.planilha_url ?? planilhaAnterior?.planilha_url ?? ""} emailServico={emailContaServico()} />
+            </div>
+          </details>
+        )}
+      </section>
+
+      {conflitos.length > 0 && (
+        <section id="conflitos" className="space-y-2">
+          <h2 className="font-semibold">Conflitos: venda manual × planilha ({conflitos.length})</h2>
+          <ListaConflitos conflitos={conflitos} ehAdmin={ehAdmin} />
+        </section>
+      )}
 
       <div className={`grid gap-4 ${selecionada ? "lg:grid-cols-[1fr_1.2fr]" : ""}`}>
         <div className="overflow-x-auto rounded-2xl border border-neutral-200 bg-white">
@@ -124,7 +169,7 @@ export default async function VendasPage({ searchParams }: { searchParams: Promi
             {mesFechado ? (
               <p className="rounded-lg bg-amber-50 px-3 py-2 text-amber-900">Mês fechado: vendas não podem ser alteradas.</p>
             ) : (
-              <EditorDia key={selecionada} data={selecionada} existentes={existentes} ehAdmin={sessao?.perfil?.papel === "admin"} />
+              <EditorDia key={selecionada} data={selecionada} existentes={existentes} ehAdmin={ehAdmin} />
             )}
           </div>
         )}

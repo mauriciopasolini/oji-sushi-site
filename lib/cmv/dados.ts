@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { type DataCivil, competenciaDe, diasNoMes, montar, partes, somarDias } from "./datas";
 import { centavos } from "./dinheiro";
 import { type ConfigMes, type FaixaRegua, type PesosSemana, type ResultadoPainel, calcularPainel } from "./engine";
+import type { DadosCaixa } from "./alertas";
 import type { CategoriaRow, FornecedorRow } from "./tipos";
 
 /** Padrões para um mês que ainda não existe no banco (iguais aos defaults da tabela meses). */
@@ -38,6 +39,46 @@ export async function fornecedoresMaisUsados(supabase: SupabaseClient, hoje: Dat
   const contagem = new Map<string, number>();
   for (const n of data ?? []) contagem.set(n.fornecedor_id, (contagem.get(n.fornecedor_id) ?? 0) + 1);
   return [...contagem.entries()].sort((a, b) => b[1] - a[1]).slice(0, quantos).map(([id]) => id);
+}
+
+/** Dados da planilha de caixa para alertas e status da sincronização. */
+export async function carregarCaixa(supabase: SupabaseClient, competencia: DataCivil): Promise<DadosCaixa & { ultimaOk: string | null }> {
+  const ini = competenciaDe(competencia);
+  const fim = fimDoMes(ini);
+  const [planilhaQ, ultimaQ, ultimaOkQ, fechQ, catQ, conflitosQ] = await Promise.all([
+    supabase.from("meses").select("planilha_url").not("planilha_url", "is", null).lte("competencia", ini).order("competencia", { ascending: false }).limit(1).maybeSingle(),
+    supabase.from("sincronizacoes").select("status, iniciado_em, concluido_em, erro").eq("competencia", ini).neq("status", "executando").order("iniciado_em", { ascending: false }).limit(1).maybeSingle(),
+    supabase.from("sincronizacoes").select("concluido_em, resumo").eq("competencia", ini).eq("status", "ok").order("iniciado_em", { ascending: false }).limit(1).maybeSingle(),
+    supabase.from("fechamento_turno").select("data, despesa_mercado").gte("data", ini).lte("data", fim),
+    supabase.from("categorias_cmv").select("id").eq("slug", "mercado").maybeSingle(),
+    supabase.from("conflitos_venda").select("id", { count: "exact", head: true }).is("resolucao", null).gte("data", ini).lte("data", fim),
+  ]);
+
+  const mercadoPorDia = new Map<string, number>();
+  for (const f of fechQ.data ?? []) mercadoPorDia.set(f.data, (mercadoPorDia.get(f.data) ?? 0) + centavos(f.despesa_mercado));
+  const diasComMercado = [...mercadoPorDia.entries()].filter(([, v]) => v > 0);
+  let comNota = new Set<string>();
+  if (diasComMercado.length && catQ.data) {
+    const { data } = await supabase
+      .from("notas")
+      .select("data_emissao")
+      .eq("status", "ativa")
+      .eq("categoria_id", catQ.data.id)
+      .in("data_emissao", diasComMercado.map(([d]) => d));
+    comNota = new Set((data ?? []).map((n) => n.data_emissao));
+  }
+
+  const resumo = (ultimaOkQ.data?.resumo ?? {}) as Partial<DadosCaixa>;
+  return {
+    planilhaConfigurada: Boolean(planilhaQ.data?.planilha_url),
+    ultimaSync: ultimaQ.data ? { status: ultimaQ.data.status, em: ultimaQ.data.concluido_em ?? ultimaQ.data.iniciado_em, mensagem: ultimaQ.data.erro } : null,
+    ultimaOk: ultimaOkQ.data?.concluido_em ?? null,
+    abasFaltando: resumo.abasFaltando ?? [],
+    abasVazias: resumo.abasVazias ?? [],
+    divergencias: resumo.divergencias ?? [],
+    mercadoSemNota: diasComMercado.filter(([d]) => !comNota.has(d)).map(([data, valor]) => ({ data, valor })).sort((a, b) => a.data.localeCompare(b.data)),
+    conflitosPendentes: conflitosQ.count ?? 0,
+  };
 }
 
 /** Carrega tudo do mês e roda o motor. */

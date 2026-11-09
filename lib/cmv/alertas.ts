@@ -21,14 +21,90 @@ export function listarDias(dias: DataCivil[], max = 8): string {
   return `${base}/${mes}${resto > 0 ? ` (+${resto})` : ""}`;
 }
 
+const ROTULO_ORIGEM: Record<string, string> = { restaurante: "Restaurante", oji_tele: "Oji Tele", shakai_tele: "Shakai Tele", wabi_tele: "Wabi Tele" };
+const dataBR = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
+
+/** Dados da planilha de caixa para os alertas (da última sincronização + fechamentos + notas). */
+export type DadosCaixa = {
+  planilhaConfigurada: boolean;
+  ultimaSync: { status: string; em: string; mensagem?: string | null } | null;
+  abasFaltando: string[];
+  abasVazias: string[];
+  divergencias: {
+    data: string;
+    turno: number;
+    tipo: "total_origem" | "total_dia";
+    origem?: string;
+    diferenca: number;
+    totalPlanilha?: number;
+    totalCalculado?: number;
+    totalDia?: number;
+    somaOrigens?: number;
+  }[];
+  /** dias com despesa "Mercado" no caixa e nenhuma nota de Mercado lançada na data */
+  mercadoSemNota: { data: string; valor: number }[];
+  conflitosPendentes: number;
+};
+
+function alertasDeCaixa(caixa: DadosCaixa, ehAdmin: boolean): Alerta[] {
+  const a: Alerta[] = [];
+  if (!caixa.planilhaConfigurada) {
+    if (ehAdmin) a.push({ id: "planilha-nao-configurada", nivel: "info", titulo: "Planilha do mês não configurada", detalhe: "Informe o link em Vendas → Planilha do mês.", href: "/painel/cmv/vendas" });
+    return a;
+  }
+  if (caixa.ultimaSync?.status === "erro") {
+    a.push({ id: "sync-erro", nivel: "erro", titulo: "A última sincronização com a planilha falhou", detalhe: caixa.ultimaSync.mensagem ?? undefined, href: "/painel/cmv/vendas" });
+  }
+  if (caixa.conflitosPendentes > 0) {
+    a.push({
+      id: "conflitos-venda",
+      nivel: "aviso",
+      titulo: `${caixa.conflitosPendentes} venda(s) manual(is) diferente(s) da planilha`,
+      detalhe: ehAdmin ? "Escolha manter a manual ou usar a planilha." : "O administrador precisa decidir qual valor vale.",
+      href: "/painel/cmv/vendas#conflitos",
+    });
+  }
+  for (const m of caixa.mercadoSemNota) {
+    a.push({
+      id: `mercado-sem-nota-${m.data}`,
+      nivel: "aviso",
+      titulo: `Possível cupom não lançado: Mercado ${formatarBRL(m.valor)} em ${dataBR(m.data)}`,
+      detalhe: "O caixa registra despesa de Mercado nesse dia, mas não há nota de Mercado lançada na data.",
+      href: "/painel/cmv/notas/nova",
+    });
+  }
+  if (caixa.divergencias.length) {
+    const textos = caixa.divergencias.map((d) =>
+      d.tipo === "total_origem"
+        ? `${dataBR(d.data)} T${d.turno} ${ROTULO_ORIGEM[d.origem ?? ""] ?? d.origem}: Total ${formatarBRL(d.totalPlanilha ?? 0)} × partes ${formatarBRL(d.totalCalculado ?? 0)}`
+        : `${dataBR(d.data)} T${d.turno} Total do Dia ${formatarBRL(d.totalDia ?? 0)} × soma ${formatarBRL(d.somaOrigens ?? 0)}`,
+    );
+    a.push({
+      id: "divergencias-planilha",
+      nivel: "aviso",
+      titulo: `Planilha com ${caixa.divergencias.length} total(is) que não batem com as partes`,
+      detalhe: `${textos.slice(0, 3).join(" · ")}${textos.length > 3 ? ` · e mais ${textos.length - 3}` : ""}. O sistema usa a soma das partes.`,
+      href: "/painel/cmv/vendas",
+    });
+  }
+  if (caixa.abasFaltando.length) {
+    a.push({ id: "abas-faltando", nivel: "aviso", titulo: `Planilha sem a aba de ${listarDias(caixa.abasFaltando)}`, href: "/painel/cmv/vendas" });
+  }
+  if (caixa.abasVazias.length) {
+    a.push({ id: "abas-vazias", nivel: "aviso", titulo: `Aba da planilha vazia em ${listarDias(caixa.abasVazias)}`, detalhe: "O caixa desses dias ainda não foi preenchido.", href: "/painel/cmv/vendas" });
+  }
+  return a;
+}
+
 export function gerarAlertas(params: {
   painel: ResultadoPainel;
   ehAdmin: boolean;
   fornecedoresNovos?: number;
   mesFechado?: boolean;
+  caixa?: DadosCaixa;
 }): Alerta[] {
-  const { painel, ehAdmin, fornecedoresNovos = 0, mesFechado = false } = params;
-  const alertas: Alerta[] = [];
+  const { painel, ehAdmin, fornecedoresNovos = 0, mesFechado = false, caixa } = params;
+  const alertas: Alerta[] = caixa && !mesFechado ? alertasDeCaixa(caixa, ehAdmin) : [];
 
   if (painel.vendasIncompletas && !mesFechado) {
     alertas.push({

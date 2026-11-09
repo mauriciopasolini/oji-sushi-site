@@ -221,6 +221,27 @@ try {
       return [x.categoria_fora_do_padrao, y.categoria_fora_do_padrao, z.categoria_fora_do_padrao];
     }, (r) => r[0] === true && r[1] === true && r[2] === false);
 
+    console.log("\nSincronização e conflitos");
+    const [conf] = await tx`insert into public.conflitos_venda (data, turno, origem, valores_manual, valores_planilha, total_manual, total_planilha, assinatura_planilha)
+      values ('2026-12-02', 1, 'restaurante', '{}', '{}', 10, 20, 'x') returning id`;
+    await deve(tx, "gestor lê conflitos e sincronizações", async (sp) => {
+      await comoUsuario(sp, U.gestor);
+      const a = await sp`select id from public.conflitos_venda`;
+      const b = await sp`select id from public.sincronizacoes`;
+      return [a.length, b.length];
+    }, (r) => r[0] >= 1 && r[1] >= 0);
+    await deve(tx, "gestor NÃO resolve conflito (0 linhas)", async (sp) => { await comoUsuario(sp, U.gestor); return sp`update public.conflitos_venda set resolucao = 'manter_manual' where id = ${conf.id}`; }, (r) => r.count === 0);
+    await naoDeve(tx, "gestor NÃO registra sincronização (só a secret key)", async (sp) => { await comoUsuario(sp, U.gestor); await sp`insert into public.sincronizacoes (competencia, gatilho) values ('2026-12-01', 'manual')`; }, "row-level security");
+    await deve(tx, "admin resolve conflito → resolvido_por/em preenchidos e auditado", async (sp) => {
+      await comoUsuario(sp, U.admin);
+      await sp`update public.conflitos_venda set resolucao = 'manter_manual' where id = ${conf.id}`;
+      await sp`reset role`;
+      const [c] = await sp`select resolvido_por, resolvido_em from public.conflitos_venda where id = ${conf.id}`;
+      const [a] = await sp`select count(*)::int n from public.auditoria where tabela = 'conflitos_venda' and registro_id = ${conf.id}`;
+      return { ...c, aud: a.n };
+    }, (r) => r.resolvido_por === U.admin && r.resolvido_em !== null && r.aud === 1);
+    await naoDeve(tx, "anônimo não lê conflitos", async (sp) => { await comoAnonimo(sp); await sp`select * from public.conflitos_venda`; }, "permission denied");
+
     console.log("\nTroca de senha");
     await deve(tx, "usuário confirma a troca de senha só no próprio perfil", async (sp) => {
       await sp`update public.perfis set deve_trocar_senha = true where id in (${U.gestor}, ${U.admin})`;

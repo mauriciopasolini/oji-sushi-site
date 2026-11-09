@@ -102,3 +102,28 @@ Registro cronológico. Cada item: decisão, motivo e data.
     - A aba 08/11 real virou teste fixo (`parser.test.ts`).
 64. **A planilha é anual:** 340 abas `DD/MM` num arquivo só (mais Metas e Motoboys). A sincronização filtra as abas pelo mês da competência; o ano vem da competência.
 65. **Validação 08/11:** T1 2.253,81 · T2 2.792,77 · dia 5.046,58, idênticos aos valores informados. Acumulado 01–08/11 pelas partes: **30.670,84**. A aba Metas mostra 30.779,84: são **R$ 109,00 a mais**, exatamente a soma da "Qtd. Pedidos" do Oji Tele T2 de 01 a 07/11 (21+15+12+16+13+15+17). Os valores "Vendido" da aba Metas são digitados à mão e foram copiados quando o Total do Oji Tele T2 ainda tinha o erro de fórmula (somava a Qtd. Pedidos). As abas diárias hoje estão corretas (`=SUM(J13:J15)`). O sistema usa a soma das partes, como manda o briefing.
+
+## 2026-11-10 — Etapa 5 (parte 2): sincronização
+
+66. **Planejamento puro + execução separada.** `lib/cmv/planilha/planejar.ts` (testado) decide o que gravar, o que é conflito e o que é alerta. `sincronizar.ts` lê o Google e o banco, aplica o plano com a **secret key** (só servidor) e registra cada execução em `sincronizacoes`.
+67. **Quais dias:** do dia 1 até **ontem** (a aba de hoje ainda está sendo preenchida). Todo dia lido grava as 8 linhas (2 turnos × 4 origens), mesmo zeradas, mais 2 `fechamento_turno` com `bruto` = leitura do turno + grade inteira da aba. Upsert por (data, turno, origem) / (data, turno): é idempotente.
+68. **Vendas manuais (pedido do Mauricio: avisar, não ignorar).**
+    - Manual **igual** à planilha (mesmos valores; qtd. de pedidos vazia no manual não conta como diferença) → é **conciliada**: passa a ser da planilha.
+    - Manual **diferente** → **não é sobrescrita**. Vira registro em `conflitos_venda`, alerta no painel e card na tela de Vendas com "Usar a planilha" / "Manter o manual", decisão só do admin, auditada. Enquanto pendente, vale o manual.
+    - "Manter o manual" grava a impressão digital dos valores da planilha: se a planilha mudar depois, o conflito reaparece.
+    - Conflito que deixa de existir (alguém corrigiu) é removido na sincronização seguinte.
+69. **Planilha do mês:** `meses.planilha_url`; sem link no mês, vale o do mês configurado mais recente (a planilha é anual). O admin edita em Vendas → Planilha do mês, que mostra o e-mail da conta de serviço. O link de novembro já foi gravado (é o da mensagem do Mauricio).
+70. **Gatilhos.** O botão "Sincronizar agora" pode ser usado por qualquer membro. A sincronização **automática ao abrir o painel** roda em segundo plano (componente cliente chama uma server action) se a última tiver mais de 30 min. O **cron** roda às 04:00 de São Paulo (`0 7 * * *` UTC em `vercel.json`) em `/api/cron/sync-vendas`, com `Authorization: Bearer CRON_SECRET` (comparação em tempo constante). Cada gatilho sincroniza o mês atual e, se ontem for do mês anterior **e esse mês existir no sistema**, também ele. Assim, no dia 1º fecha o último dia, mas meses fora do módulo não são importados.
+71. **Concorrência:** não inicia se houver sincronização "executando" do mesmo mês iniciada há menos de 3 minutos. Mês fechado é ignorado (e o banco também bloquearia).
+72. **Alertas de caixa** (no painel):
+    - falha da última sincronização (erro);
+    - conflitos pendentes;
+    - "possível cupom não lançado": despesa Mercado > 0 no caixa e nenhuma nota ativa de Mercado na data;
+    - totais da planilha que não batem com as partes (origem e Total do Dia);
+    - abas faltando ou vazias até ontem;
+    - planilha não configurada (só admin).
+
+    Divergências e abas vêm do resumo da última sincronização bem-sucedida; Mercado sem nota é calculado na hora, a partir de `fechamento_turno` e `notas`.
+73. **Modo ensaio** (`ensaio: true`): lê a planilha e o banco e monta o plano sem gravar nada (nem o registro). É usado no teste de integração `npm run test:integracao`, com a planilha real: 01–08/11 = 30.670,84, 64 linhas, 16 fechamentos, 0 conflitos, 0 divergências.
+74. **Segredos na Vercel** (`SUPABASE_SERVICE_ROLE_KEY`, `GOOGLE_SERVICE_ACCOUNT_JSON`, `CRON_SECRET`, como "sensitive", em Production e Preview) são enviados pelo próprio Mauricio com `npm run vercel:segredos`. O script lê do `.env.local` e não exibe nada. O `CRON_SECRET` foi gerado localmente (32 bytes aleatórios).
+75. **O cron só roda em Production** (branch `main`). Até o merge, a sincronização no preview é pelo botão ou pela automática.

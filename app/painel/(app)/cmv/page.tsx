@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { type Alerta, gerarAlertas, listarDias } from "@/lib/cmv/alertas";
-import { carregarPainel } from "@/lib/cmv/dados";
+import { carregarCaixa, carregarPainel } from "@/lib/cmv/dados";
 import { competenciaDe, hojeSP, montar, partes, rotuloSemana } from "@/lib/cmv/datas";
 import { centavos, formatarBRL, formatarPct } from "@/lib/cmv/dinheiro";
 import type { CorSemaforo, OrcamentoCategoria } from "@/lib/cmv/engine";
 import { getSessao } from "@/lib/cmv/sessao";
 import { RE_UUID } from "@/lib/cmv/tipos";
 import { createClient } from "@/lib/supabase/server";
+import { BotaoSincronizar, SincronizacaoAutomatica } from "./sincronizacao/componentes";
 
 export const metadata: Metadata = { title: "CMV" };
 
@@ -139,8 +140,9 @@ export default async function CmvPage({ searchParams }: { searchParams: Promise<
   const ehAdmin = sessao?.perfil?.papel === "admin";
   const supabase = await createClient();
 
-  const [painel, notaQ, fruteiraQ, novosQ] = await Promise.all([
+  const [painel, caixa, notaQ, fruteiraQ, novosQ] = await Promise.all([
     carregarPainel(supabase, competencia, hoje),
+    carregarCaixa(supabase, competencia),
     sp.nota && RE_UUID.test(sp.nota)
       ? supabase.from("notas").select("valor, data_emissao, categoria_id, fornecedores(nome)").eq("id", sp.nota).maybeSingle()
       : Promise.resolve({ data: null }),
@@ -150,7 +152,7 @@ export default async function CmvPage({ searchParams }: { searchParams: Promise<
   const { resultado: r, mes } = painel;
   const mesFechado = mes.status === "fechado";
   const provisorio = r.vendasIncompletas && !mesFechado;
-  const alertas = gerarAlertas({ painel: r, ehAdmin, fornecedoresNovos: novosQ.count ?? 0, mesFechado });
+  const alertas = gerarAlertas({ painel: r, ehAdmin, fornecedoresNovos: novosQ.count ?? 0, mesFechado, caixa });
 
   const [principal, ...outras] = r.categorias;
   const nova = notaQ.data as { valor: number; data_emissao: string; categoria_id: string; fornecedores: { nome: string } | null } | null;
@@ -233,11 +235,19 @@ export default async function CmvPage({ searchParams }: { searchParams: Promise<
             </p>
             <p className="text-xs text-neutral-500">{p.hojeRef ? `Vendas até ${dataBR(p.hojeRef)}` : "Nenhuma venda registrada no mês"}</p>
           </div>
-          <p className="mt-3 border-t border-neutral-100 pt-2 text-xs text-neutral-500">
-            Sincronização com a planilha: em breve (Etapa 5).
-            {painel.ultimaVendaManual && <> Último lançamento manual: {quando(painel.ultimaVendaManual)}.</>}
-            {painel.ultimaSincronizacao && <> Última sincronização: {quando(painel.ultimaSincronizacao)}.</>}
-          </p>
+          <div className="mt-3 space-y-2 border-t border-neutral-100 pt-2 text-xs text-neutral-500">
+            <p>
+              {caixa.ultimaOk ? <>Planilha sincronizada em {quando(caixa.ultimaOk)}.</> : <>Planilha ainda não sincronizada.</>}
+              {caixa.ultimaSync?.status === "erro" && <span className="text-red-700"> Última tentativa falhou ({quando(caixa.ultimaSync.em)}).</span>}
+              {painel.ultimaVendaManual && <> Último lançamento manual: {quando(painel.ultimaVendaManual)}.</>}
+            </p>
+            {ehMesAtual && !mesFechado && (
+              <div className="flex flex-wrap items-center gap-2">
+                <BotaoSincronizar />
+                <SincronizacaoAutomatica />
+              </div>
+            )}
+          </div>
         </div>
 
         {/* CMV */}

@@ -76,6 +76,34 @@ describe("Alertas do painel", () => {
     expect(gerarAlertas({ painel: p, ehAdmin: false, fornecedoresNovos: 2 }).some((x) => x.id === "fornecedores-novos")).toBe(false);
   });
 
+  it("alertas de caixa: conflitos, cupom não lançado, divergências, abas faltando/vazias, falha", () => {
+    const a = gerarAlertas({
+      painel: painel(vendasAte(9)),
+      ehAdmin: true,
+      caixa: {
+        planilhaConfigurada: true,
+        ultimaSync: { status: "erro", em: "2026-11-10T10:00:00Z", mensagem: "Sem acesso à planilha" },
+        abasFaltando: ["2026-11-03"],
+        abasVazias: ["2026-11-09"],
+        divergencias: [{ data: "2026-11-08", turno: 2, tipo: "total_origem", origem: "oji_tele", diferenca: R(14), totalPlanilha: R(1024.72), totalCalculado: R(1010.72) }],
+        mercadoSemNota: [{ data: "2026-11-05", valor: R(87.5) }],
+        conflitosPendentes: 2,
+      },
+    });
+    const ids = a.map((x) => x.id);
+    expect(ids[0]).toBe("sync-erro"); // erro vem primeiro
+    expect(ids).toEqual(expect.arrayContaining(["conflitos-venda", "mercado-sem-nota-2026-11-05", "divergencias-planilha", "abas-faltando", "abas-vazias"]));
+    expect(a.find((x) => x.id === "mercado-sem-nota-2026-11-05")?.titulo.replace(/ /g, " ")).toBe("Possível cupom não lançado: Mercado R$ 87,50 em 05/11");
+    expect(a.find((x) => x.id === "divergencias-planilha")?.detalhe?.replace(/ /g, " ")).toContain("08/11 T2 Oji Tele: Total R$ 1.024,72 × partes R$ 1.010,72");
+  });
+
+  it("planilha não configurada: aviso só para o admin; mês fechado não gera alertas de caixa", () => {
+    const caixa = { planilhaConfigurada: false, ultimaSync: null, abasFaltando: [], abasVazias: [], divergencias: [], mercadoSemNota: [], conflitosPendentes: 0 };
+    expect(gerarAlertas({ painel: painel(vendasAte(9)), ehAdmin: true, caixa }).some((x) => x.id === "planilha-nao-configurada")).toBe(true);
+    expect(gerarAlertas({ painel: painel(vendasAte(9)), ehAdmin: false, caixa }).some((x) => x.id === "planilha-nao-configurada")).toBe(false);
+    expect(gerarAlertas({ painel: painel(vendasAte(9)), ehAdmin: true, caixa: { ...caixa, planilhaConfigurada: true, conflitosPendentes: 3 }, mesFechado: true }).some((x) => x.id === "conflitos-venda")).toBe(false);
+  });
+
   it("formata a lista de dias", () => {
     expect(listarDias(["2026-11-03"])).toBe("03/11");
     expect(listarDias(["2026-11-03", "2026-11-04", "2026-11-07"])).toBe("03, 04 e 07/11");
