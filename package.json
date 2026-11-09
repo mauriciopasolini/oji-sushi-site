@@ -16,10 +16,13 @@
     "criar-usuario": "node --env-file=.env.local scripts/criar-usuario.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
-    "limpar-teste": "node --env-file=.env.local scripts/limpar-dados-teste.mjs"
+    "limpar-teste": "node --env-file=.env.local scripts/limpar-dados-teste.mjs",
+    "configurar-google": "node scripts/configurar-google.mjs",
+    "testar-planilha": "node --env-file=.env.local --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/testar-planilha.mjs"
   },
   "dependencies": {
     "@date-fns/tz": "1.5.0",
+    "@googleapis/sheets": "18.1.1",
     "@supabase/ssr": "0.12.7",
     "@supabase/supabase-js": "2.119.0",
     "date-fns": "4.4.0",
