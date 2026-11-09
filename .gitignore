@@ -1,0 +1,23 @@
+# dependências e build
+node_modules/
+.next/
+out/
+next-env.d.ts
+*.tsbuildinfo
+
+# segredos — nunca commitar
+.env
+.env*.local
+.env.*
+!.env.example
+
+# ferramentas locais
+.vercel/
+.claude/
+supabase/.temp/
+supabase/.branches/
+
+# sistema
+.DS_Store
+Thumbs.db
+npm-debug.log*
