@@ -1,0 +1,7 @@
+/* Tailwind v4: carregado SOMENTE nas rotas /painel. A landing (public/index.html) não recebe este CSS. */
+@import "tailwindcss";
+@source not "../../public";
+
+:root {
+  color-scheme: light;
+}
