@@ -15,7 +15,8 @@
     "db:test-rls": "node --env-file=.env.local scripts/testar-rls.mjs",
     "criar-usuario": "node --env-file=.env.local scripts/criar-usuario.mjs",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "limpar-teste": "node --env-file=.env.local scripts/limpar-dados-teste.mjs"
   },
   "dependencies": {
     "@date-fns/tz": "1.5.0",

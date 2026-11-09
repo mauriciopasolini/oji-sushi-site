@@ -67,3 +67,19 @@ Registro cronológico. Cada item: decisão, motivo e data.
 49. **`numeric` chega do PostgREST como número JSON**, não como string. Tudo passa por `centavos()`, que aceita os dois formatos.
 50. **Lista de notas:** miniaturas com a imagem inteira (`loading="lazy"`), porque o redimensionamento de imagem do Supabase é recurso pago. Com fotos de ~200 KB fica aceitável; revisar se a lista ficar pesada no 4G.
 51. **`/painel/cmv` provisório:** mostra o "disponível nesta semana" de cada categoria (do motor) e confirma a nota recém-lançada. O painel completo é a Etapa 4.
+
+## 2026-11-10 — Etapa 4: painel
+
+52. **Troca de senha** já existe desde o ajuste pós-Etapa 1 (item 30): `/painel/conta/senha`, link no cabeçalho, obrigatória no primeiro acesso.
+53. **Orçamento provisório** (pedido do Mauricio para a entrada em uso no meio do mês). `diasSemVenda()` no motor lista os dias de 1 até ontem sem venda registrada. Enquanto houver algum, o painel mostra o aviso "Dados de venda incompletos: orçamento provisório" com os dias faltantes, marca o card principal como "provisório" e gera um alerta. Um dia conta como registrado se tem linha em `vendas_turno` (manual ou planilha), mesmo zerada, ou aba sincronizada em `fechamento_turno`. Para dias sem movimento, a tela de vendas tem "Sem movimento neste dia", que grava venda zero.
+54. **Alertas** (`lib/cmv/alertas.ts`, função pura com testes): orçamento provisório, teto do mês estourado ou sem saldo (erro), semana estourada (avisa que as próximas semanas já foram reduzidas), ritmo vermelho e fornecedores novos (só admin). Os alertas de caixa entram na Etapa 5.
+55. **Vendas manuais** (`/painel/cmv/vendas`): grade do mês (dias sem venda em destaque, com a meta do dia) e um editor por dia com turno × origem, com os mesmos campos da planilha. Gravação por upsert em (data, turno, origem) com `fonte='manual'`. Linhas vindas da planilha aparecem somente leitura e nunca são sobrescritas (a action ignora e o RLS bloqueia). Só o admin remove lançamentos manuais.
+56. **Painel** (`/painel/cmv`):
+    - card principal da 1ª categoria (Pescados) com o disponível da semana, barra comprado/orçamento da semana, semáforo e "S2 · 08 a 14/11";
+    - cards das demais categorias com teto, comprado, saldo e disponível da semana;
+    - bloco de vendas com projeção conservadora em destaque, tendência, realizado × meta acumulada e últimas atualizações;
+    - CMV parcial com a faixa da régua;
+    - tabela semanal por categoria;
+    - alertas e botões flutuantes;
+    - navegação por mês (`?mes=AAAA-MM`), sem botões de lançamento em mês passado ou fechado.
+57. **Limpeza de dados de teste** (`npm run limpar-teste`). Funciona em dois passos: o 1º só lista e gera um código ligado ao plano exato (hash dos ids); o 2º exige `--confirmar <código>`, e se os dados mudarem no meio o código não confere. Apaga todas as notas (e a auditoria delas), os fornecedores fora do cadastro inicial, os meses criados automaticamente que ficarem sem uso e todas as fotos. Com `--vendas`, apaga também as vendas. Recusa rodar se houver mês fechado. As proteções contra exclusão (triggers) são desligadas só dentro da transação. `--ensaio` executa e desfaz, para conferir.

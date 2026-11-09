@@ -125,6 +125,16 @@ export function definirHojeRef(hoje: DataCivil, diasComVendaCompleta: DataCivil[
   return candidatos.length ? candidatos[candidatos.length - 1] : null;
 }
 
+/**
+ * Dias do mês, de 1 até ontem, sem venda registrada (sincronizada ou manual).
+ * Enquanto houver algum, a projeção, e portanto o orçamento, é provisória.
+ */
+export function diasSemVenda(competencia: DataCivil, hoje: DataCivil, diasComVenda: DataCivil[]): DataCivil[] {
+  const ontem = somarDias(hoje, -1);
+  const com = new Set(diasComVenda);
+  return diasDoMes(competencia).filter((d) => d <= ontem && !com.has(d));
+}
+
 // -----------------------------------------------------------------------------
 // Projeção de venda (assimétrica, conservadora)
 //   fator_ritmo = realizado / meta_acumulada    (meta_acumulada = 0 → 1)
@@ -408,6 +418,9 @@ export function calcularCmv(params: {
 export type ResultadoPainel = {
   hoje: DataCivil;
   projecao: Projecao;
+  /** dias de 1 até ontem sem venda; não vazio → orçamento provisório */
+  diasSemVenda: DataCivil[];
+  vendasIncompletas: boolean;
   categorias: (OrcamentoCategoria & { nome: string; pctMeta: number })[];
   tetoTotal: Centavos;
   compradoTotal: Centavos;
@@ -422,6 +435,8 @@ export function calcularPainel(params: {
   hoje: DataCivil;
   /** se omitido, usa ontem/último dia com venda */
   hojeRef?: DataCivil | null;
+  /** dias com venda registrada (inclusive os de valor zero); se omitido, os dias de `vendas` */
+  diasComVenda?: DataCivil[];
   regua: FaixaRegua[];
   vendaBaseErp?: Centavos | null;
   estoqueInicial?: Centavos | null;
@@ -429,8 +444,9 @@ export function calcularPainel(params: {
 }): ResultadoPainel {
   const { config, hoje } = params;
   const vendasMes = params.vendas.filter((v) => mesmoMes(v.data, config.competencia));
-  const hojeRef =
-    params.hojeRef !== undefined ? params.hojeRef : definirHojeRef(hoje, vendasMes.map((v) => v.data));
+  const diasComVenda = params.diasComVenda ?? vendasMes.map((v) => v.data);
+  const hojeRef = params.hojeRef !== undefined ? params.hojeRef : definirHojeRef(hoje, diasComVenda);
+  const faltando = diasSemVenda(config.competencia, hoje, diasComVenda);
 
   const projecao = calcularProjecao({ config, vendas: vendasMes, hojeRef });
   const categorias = params.categorias.map((c) => ({
@@ -443,6 +459,8 @@ export function calcularPainel(params: {
   return {
     hoje,
     projecao,
+    diasSemVenda: faltando,
+    vendasIncompletas: faltando.length > 0,
     categorias,
     tetoTotal: Math.round(projecao.projecao * config.metaCmvPct),
     compradoTotal,

@@ -45,19 +45,25 @@ export async function carregarPainel(
   supabase: SupabaseClient,
   competencia: DataCivil,
   hoje: DataCivil,
-): Promise<{ resultado: ResultadoPainel; mes: { id: string | null; status: string; competencia: DataCivil } }> {
+): Promise<{
+  resultado: ResultadoPainel;
+  mes: { id: string | null; status: string; competencia: DataCivil; metaVenda: number };
+  ultimaSincronizacao: string | null;
+  ultimaVendaManual: string | null;
+}> {
   const ini = competenciaDe(competencia);
   const fim = fimDoMes(ini);
 
-  const [mesQ, pesosQ, categorias, reguaQ, notasQ, vendasQ] = await Promise.all([
+  const [mesQ, pesosQ, categorias, reguaQ, notasQ, vendasQ, fechQ] = await Promise.all([
     supabase.from("meses").select("*").eq("competencia", ini).maybeSingle(),
     supabase.from("pesos_dia_semana").select("dia_semana, peso").order("dia_semana"),
     listarCategorias(supabase),
     supabase.from("regua_cmv").select("faixa, limite_superior_pct, cor, ordem").order("ordem"),
     supabase.from("notas").select("categoria_id, data_emissao, valor, status").eq("status", "ativa").gte("data_emissao", ini).lte("data_emissao", fim),
-    supabase.from("vendas_turno").select("data, total_calculado").gte("data", ini).lte("data", fim),
+    supabase.from("vendas_turno").select("data, total_calculado, fonte, sincronizado_em, atualizado_em").gte("data", ini).lte("data", fim),
+    supabase.from("fechamento_turno").select("data, sincronizado_em").gte("data", ini).lte("data", fim),
   ]);
-  for (const q of [mesQ, pesosQ, reguaQ, notasQ, vendasQ]) if (q.error) throw new Error(q.error.message);
+  for (const q of [mesQ, pesosQ, reguaQ, notasQ, vendasQ, fechQ]) if (q.error) throw new Error(q.error.message);
 
   const mes = mesQ.data ?? PADRAO_MES;
   const pesosDiaSemana = Array<number>(7).fill(0);
@@ -88,13 +94,19 @@ export async function carregarPainel(
     categorias: categorias.filter((c) => c.ativa).map((c) => ({ id: c.id, nome: c.nome, pctMeta: Number(c.pct_meta) })),
     notas: (notasQ.data ?? []).map((n) => ({ categoriaId: n.categoria_id, data: n.data_emissao, valor: centavos(n.valor), status: n.status })),
     vendas: [...porDia.entries()].map(([data, total]) => ({ data, total })),
+    // Dia "registrado": tem venda (manual ou planilha) ou aba sincronizada, mesmo que zerada.
+    diasComVenda: [...new Set([...porDia.keys(), ...(fechQ.data ?? []).map((f) => f.data)])],
     hoje,
     regua,
     vendaBaseErp: mesQ.data?.venda_base_erp != null ? centavos(mesQ.data.venda_base_erp) : null,
   });
 
+  const maior = (xs: (string | null | undefined)[]) => xs.filter(Boolean).sort().at(-1) ?? null;
+
   return {
     resultado,
-    mes: { id: mesQ.data?.id ?? null, status: mesQ.data?.status ?? "aberto", competencia: ini },
+    mes: { id: mesQ.data?.id ?? null, status: mesQ.data?.status ?? "aberto", competencia: ini, metaVenda: config.metaVenda },
+    ultimaSincronizacao: maior([...(fechQ.data ?? []).map((f) => f.sincronizado_em), ...(vendasQ.data ?? []).map((v) => v.sincronizado_em)]),
+    ultimaVendaManual: maior((vendasQ.data ?? []).filter((v) => v.fonte === "manual").map((v) => v.atualizado_em)),
   };
 }
