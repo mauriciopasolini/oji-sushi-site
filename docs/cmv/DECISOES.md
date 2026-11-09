@@ -53,3 +53,17 @@ Registro cronológico. Cada item: decisão, motivo e data.
 38. **Mês encerrado** (hoje depois do fim do mês): `semanaAtual = null`, todas as semanas encerradas, sem "disponível agora".
 39. **CMV:** a régua usa o CMV real quando há as duas contagens; senão, o CMV de compras. `divergenciaBase = caixa − ERP` aparece no relatório.
 40. **Vitest 4.1.12 + Vite 7.3.8, com `rollup` fixado em 4.67.5** (`overrides`). O Vitest 5 usa o rolldown, cujo binário nativo é bloqueado pelo Smart App Control desta máquina. A versão WASM do rolldown não lida com caminhos `C:\`. O rollup mais recente (4.68.2) também é bloqueado, por ainda não ter reputação. A 4.67.5 é aceita e já inclui a correção do GHSA-mw96-cpmx-2vgc. `npm audit`: 0 vulnerabilidades. Ao atualizar dependências com binário nativo, teste antes nesta máquina.
+
+## 2026-11-10 — Etapa 3: notas
+
+41. **Troca de categoria vale só para a nota** (decisão do Mauricio). A coluna `notas.categoria_fora_do_padrao` é calculada pelo banco (trigger `notas_0_categoria_padrao`) no lançamento e sempre que a categoria ou o fornecedor mudam, comparando com a categoria padrão do fornecedor *naquele momento*. A conferência destaca essas notas. O usuário não consegue alterar a marcação diretamente.
+42. **Fluxo de lançamento:** o navegador gera o `id` da nota, comprime a foto (lado maior 1600 px, JPEG 0,8, rotação EXIF corrigida; PDF vai como está), envia ao bucket em `AAAA/MM/<id>.<ext>` com a sessão do usuário e chama a server action `criarNota`. A action valida tudo de novo, **confere se a foto existe no bucket** e grava. Se a gravação falhar, o próximo envio reaproveita a foto já enviada. Reenviar o mesmo formulário não duplica a nota (mesmo `id`).
+43. **Foto substituída na edição** ganha um nome novo (`AAAA/MM/<uuid>.<ext>`). A foto antiga continua no bucket e o caminho anterior fica na auditoria (nada é sobrescrito).
+44. **Dois botões de foto:** "Tirar foto" (`capture="environment"`, abre a câmera direto, como pede o briefing) e "Arquivo / PDF" (sem `capture`), porque com `capture` o celular não deixa escolher PDF nem foto da galeria.
+45. **Padrões por fornecedor:** com prazo cadastrado, a forma de pagamento padrão é boleto e o vencimento é data + prazo. Sem prazo, o padrão é "caixa", sem vencimento. Os dois são editáveis em "mais detalhes" e deixam de mudar sozinhos quando o usuário mexe neles.
+46. **Data da nota não pode ser futura.** Mês fechado é barrado pelo banco: o trigger impede gravar a nota e a política do Storage impede enviar a foto.
+47. **Botões rápidos:** os 5 fornecedores com mais notas nos últimos 90 dias, completados por ordem alfabética enquanto não houver histórico. "Fruteira de hoje" abre o formulário com o fornecedor Fruteira.
+48. **A secret key continua fora da Vercel.** Upload, URL assinada (10 min) e todas as gravações usam a sessão do usuário, com RLS. A secret key só entra quando houver processo sem usuário (cron de sincronização, Etapa 5).
+49. **`numeric` chega do PostgREST como número JSON**, não como string. Tudo passa por `centavos()`, que aceita os dois formatos.
+50. **Lista de notas:** miniaturas com a imagem inteira (`loading="lazy"`), porque o redimensionamento de imagem do Supabase é recurso pago. Com fotos de ~200 KB fica aceitável; revisar se a lista ficar pesada no 4G.
+51. **`/painel/cmv` provisório:** mostra o "disponível nesta semana" de cada categoria (do motor) e confirma a nota recém-lançada. O painel completo é a Etapa 4.

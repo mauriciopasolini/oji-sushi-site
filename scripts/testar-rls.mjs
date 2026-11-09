@@ -207,6 +207,20 @@ try {
     }, (r) => r === 0);
     await deve(tx, "admin cria fornecedor → já nasce revisado", async (sp) => { await comoUsuario(sp, U.admin); return sp`insert into public.fornecedores (nome, categoria_padrao_id) values ('Atacadão', ${pescados}) returning revisado_em, revisado_por`; }, (r) => r[0].revisado_em !== null && r[0].revisado_por === U.admin);
 
+    console.log("\nCategoria fora do padrão do fornecedor");
+    await deve(tx, "nota com a categoria padrão do fornecedor → não destacada", async (sp) => {
+      await comoUsuario(sp, U.gestor);
+      return novaNota(sp, { data_emissao: "2026-12-03", foto_path: "2026/12/a.jpg" });
+    }, (r) => r[0].categoria_fora_do_padrao === false);
+    await deve(tx, "nota com outra categoria → destacada; gestor não consegue 'limpar' o destaque", async (sp) => {
+      await comoUsuario(sp, U.gestor);
+      const [outra] = await sp`select id from public.categorias_cmv where slug = 'mercado'`;
+      const [x] = await novaNota(sp, { data_emissao: "2026-12-03", foto_path: "2026/12/b.jpg", categoria_id: outra.id });
+      const [y] = await sp`update public.notas set categoria_fora_do_padrao = false, observacao = 'x', motivo_edicao = 'teste' where id = ${x.id} returning categoria_fora_do_padrao`;
+      const [z] = await sp`update public.notas set categoria_id = ${pescados}, motivo_edicao = 'corrigi a categoria' where id = ${x.id} returning categoria_fora_do_padrao`;
+      return [x.categoria_fora_do_padrao, y.categoria_fora_do_padrao, z.categoria_fora_do_padrao];
+    }, (r) => r[0] === true && r[1] === true && r[2] === false);
+
     console.log("\nTroca de senha");
     await deve(tx, "usuário confirma a troca de senha só no próprio perfil", async (sp) => {
       await sp`update public.perfis set deve_trocar_senha = true where id in (${U.gestor}, ${U.admin})`;

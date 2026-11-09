@@ -1,5 +1,5 @@
-// Dinheiro em CENTAVOS INTEIROS. No banco é numeric(12,2), que chega como string
-// ("1234.56") pelo PostgREST; converta com `centavos()` sem passar por float.
+// Dinheiro em CENTAVOS INTEIROS. No banco é numeric(12,2), que chega do PostgREST
+// como número JSON (1234.56) e do driver postgres como texto; converta sempre com `centavos()`.
 
 export type Centavos = number;
 

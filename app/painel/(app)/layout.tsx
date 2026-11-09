@@ -27,10 +27,17 @@ export default async function AreaProtegidaLayout({ children }: { children: Reac
   return (
     <>
       <header className="sticky top-0 z-10 border-b border-neutral-200 bg-white/90 backdrop-blur">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
-          <span className="font-bold">Oji · CMV</span>
+        <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-x-4 gap-y-1 px-4 py-3">
+          <nav className="flex items-center gap-4">
+            <Link href="/painel/cmv" className="font-bold">
+              Oji · CMV
+            </Link>
+            <Link href="/painel/cmv/notas" className="text-sm font-medium text-neutral-700 hover:underline">
+              Notas
+            </Link>
+          </nav>
           <div className="flex items-center gap-3 text-sm">
-            <span className="text-neutral-600">
+            <span className="hidden text-neutral-600 sm:inline">
               {perfil.nome} <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-xs">{perfil.papel}</span>
             </span>
             <Link href="/painel/conta/senha" className="text-neutral-600 underline-offset-2 hover:underline">
