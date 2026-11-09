@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { somarDias } from "@/lib/cmv/datas";
@@ -6,7 +7,7 @@ import { centavos, formatarBRL } from "@/lib/cmv/dinheiro";
 import { ErroArquivo, caminhoFoto, prepararArquivo } from "@/lib/cmv/imagem";
 import { FORMAS_PAGAMENTO, type FormaPagamento, TIPOS_NOTA, type TipoNota } from "@/lib/cmv/tipos";
 import { createClient } from "@/lib/supabase/client";
-import { criarFornecedor, criarNota, editarNota } from "./actions";
+import { type NotaParecida, criarFornecedor, criarNota, editarNota, verificarDuplicidade } from "./actions";
 
 export type OpcaoFornecedor = { id: string; nome: string; categoriaId: string; prazo: number | null; novo: boolean };
 export type OpcaoCategoria = { id: string; nome: string };
@@ -35,6 +36,8 @@ type Props = {
   categorias: OpcaoCategoria[];
   fornecedorInicialId?: string;
   inicial?: NotaInicial;
+  /** edição aberta pelo botão "A nota fiscal chegou" de uma compra sem nota */
+  converterSemNota?: boolean;
 };
 
 const campo =
@@ -46,7 +49,9 @@ function decimalParaTela(v: string | number) {
   return formatarBRL(centavos(v)).replace(/^R\$\s?/, "").trim();
 }
 
-export function FormNota({ modo, hoje, fornecedores: fornecedoresIniciais, maisUsados, categorias, fornecedorInicialId, inicial }: Props) {
+const dataBR = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}`;
+
+export function FormNota({ modo, hoje, fornecedores: fornecedoresIniciais, maisUsados, categorias, fornecedorInicialId, inicial, converterSemNota = false }: Props) {
   const router = useRouter();
   const [fornecedores, setFornecedores] = useState(fornecedoresIniciais);
   const porId = useMemo(() => new Map(fornecedores.map((f) => [f.id, f])), [fornecedores]);
@@ -61,8 +66,11 @@ export function FormNota({ modo, hoje, fornecedores: fornecedoresIniciais, maisU
   const [arquivo, setArquivo] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
 
+  const eraSemNota = inicial?.tipo === "sem_nota";
   const [detalhesAbertos, setDetalhesAbertos] = useState(modo === "editar");
-  const [tipo, setTipo] = useState<TipoNota>(inicial?.tipo ?? "nfe");
+  const [tipo, setTipo] = useState<TipoNota>(converterSemNota && eraSemNota ? "nfe" : inicial?.tipo ?? "nfe");
+  const semNota = tipo === "sem_nota";
+  const convertendo = eraSemNota && !semNota;
   const [numero, setNumero] = useState(inicial?.numero ?? "");
   const [vencimento, setVencimento] = useState(inicial?.vencimento ?? "");
   const [vencimentoTocado, setVencimentoTocado] = useState(modo === "editar");
@@ -70,7 +78,9 @@ export function FormNota({ modo, hoje, fornecedores: fornecedoresIniciais, maisU
   const [formaTocada, setFormaTocada] = useState(modo === "editar");
   const [descricao, setDescricao] = useState(inicial?.descricao ?? "");
   const [observacao, setObservacao] = useState(inicial?.observacao ?? "");
-  const [motivo, setMotivo] = useState("");
+  const [motivo, setMotivo] = useState(converterSemNota && eraSemNota ? "Nota fiscal recebida" : "");
+  const [parecida, setParecida] = useState<NotaParecida | null>(null);
+  const duplicidadeConfirmada = useRef(false); // "É outra compra, salvar"
 
   const [busca, setBusca] = useState("");
   const [trocandoFornecedor, setTrocandoFornecedor] = useState(!fornecedorId);
@@ -136,6 +146,7 @@ export function FormNota({ modo, hoje, fornecedores: fornecedoresIniciais, maisU
   async function salvar(e: React.FormEvent) {
     e.preventDefault();
     setErro(null);
+    setParecida(null);
 
     let c = 0;
     try {
@@ -148,8 +159,27 @@ export function FormNota({ modo, hoje, fornecedores: fornecedoresIniciais, maisU
     if (c <= 0) return setErro("Informe o valor da nota.");
     if (modo === "criar" && !arquivo) return setErro("Tire a foto da nota (obrigatória).");
     if (modo === "editar" && !motivo.trim()) return setErro("Informe o motivo da edição.");
+    if (semNota && !observacao.trim()) return setErro("Compra sem nota: escreva uma observação (o que chegou e por que veio sem nota).");
+    if (convertendo && !arquivo) return setErro("A nota fiscal chegou: tire a foto da nota fiscal (a foto anterior fica no histórico).");
+    if (convertendo && (tipo === "nfe" || tipo === "cupom") && !numero.trim()) return setErro("Informe o número da nota fiscal.");
 
     try {
+      // Possível duplicidade: só ao criar, ou ao editar fornecedor/valor/data.
+      const mudouChave =
+        modo === "criar" ||
+        fornecedorId !== inicial?.fornecedorId ||
+        dataEmissao !== inicial?.dataEmissao ||
+        c !== centavos(inicial?.valor ?? 0);
+      if (mudouChave && !duplicidadeConfirmada.current) {
+        setEtapa("Conferindo notas parecidas…");
+        const dup = await verificarDuplicidade({ id, fornecedor_id: fornecedorId, data_emissao: dataEmissao, valor });
+        if (dup.ok && dup.dados.parecida) {
+          setEtapa(null);
+          setParecida(dup.dados.parecida);
+          return;
+        }
+      }
+
       let fotoPath = inicial?.fotoPath ?? "";
       if (arquivo) {
         if (fotoEnviada.current) {
@@ -194,6 +224,7 @@ export function FormNota({ modo, hoje, fornecedores: fornecedoresIniciais, maisU
       if (!r.ok) throw new Error(r.erro);
 
       setEtapa("Pronto!");
+      duplicidadeConfirmada.current = false;
       router.push(modo === "criar" ? `/painel/cmv?nota=${id}` : `/painel/cmv/notas/${id}?editada=1`);
       router.refresh();
     } catch (err) {
@@ -205,7 +236,24 @@ export function FormNota({ modo, hoje, fornecedores: fornecedoresIniciais, maisU
   const ocupado = etapa !== null;
 
   return (
-    <form onSubmit={salvar} className="space-y-6 pb-28">
+    <form id="form-nota" onSubmit={salvar} className="space-y-6 pb-28">
+      {eraSemNota && (
+        <div className={`rounded-xl border p-3 text-sm ${convertendo ? "border-blue-200 bg-blue-50 text-blue-950" : "border-amber-300 bg-amber-50 text-amber-950"}`}>
+          {convertendo ? (
+            <>
+              <p className="font-semibold">A nota fiscal chegou</p>
+              <p className="mt-0.5">
+                Tire a foto da nota fiscal (a foto anterior fica no histórico), preencha o número e ajuste o valor, se mudou. A data define a semana do
+                orçamento: mantenha a data de chegada, a menos que esteja errada.
+              </p>
+            </>
+          ) : (
+            <p>
+              <strong>Compra aguardando nota fiscal.</strong> Quando a nota chegar, desmarque “chegou sem nota fiscal” e preencha os dados da nota.
+            </p>
+          )}
+        </div>
+      )}
       {/* 1. Fornecedor */}
       <section>
         <h2 className={rotulo}>1. Fornecedor</h2>
@@ -336,7 +384,11 @@ export function FormNota({ modo, hoje, fornecedores: fornecedoresIniciais, maisU
 
       {/* 3. Foto */}
       <section>
-        <h2 className={rotulo}>3. Foto da nota {modo === "criar" ? "(obrigatória)" : "(opcional: substitui a atual)"}</h2>
+        <h2 className={rotulo}>
+          {semNota
+            ? `3. Foto do romaneio, pedido, recibo ou da mercadoria ${modo === "criar" ? "(obrigatória)" : "(opcional: substitui a atual)"}`
+            : `3. Foto da nota ${modo === "criar" ? "(obrigatória)" : convertendo ? "fiscal (obrigatória)" : "(opcional: substitui a atual)"}`}
+        </h2>
         {preview ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={preview} alt="Prévia da nota" className="mb-3 max-h-72 w-full rounded-xl border border-neutral-200 object-contain bg-white" />
@@ -375,6 +427,38 @@ export function FormNota({ modo, hoje, fornecedores: fornecedoresIniciais, maisU
         </div>
       </section>
 
+      {(modo === "criar" || eraSemNota) && (
+        <section className={`rounded-xl border p-3 ${semNota ? "border-amber-300 bg-amber-50" : "border-neutral-200 bg-white"}`}>
+          <label className="flex items-start gap-3">
+            <input
+              type="checkbox"
+              checked={semNota}
+              onChange={(e) => {
+                setTipo(e.target.checked ? "sem_nota" : "nfe");
+                if (!e.target.checked && eraSemNota) setDetalhesAbertos(true);
+              }}
+              className="mt-1 h-5 w-5 accent-amber-600"
+            />
+            <span>
+              <span className="font-medium">Mercadoria chegou sem nota fiscal</span>
+              <span className="block text-sm text-neutral-600">Entra no orçamento pela data de chegada e fica “aguardando nota fiscal” até a nota chegar.</span>
+            </span>
+          </label>
+          {semNota && (
+            <label className="mt-3 block">
+              <span className={rotulo}>Observação (obrigatória)</span>
+              <textarea
+                value={observacao}
+                onChange={(e) => setObservacao(e.target.value)}
+                rows={2}
+                placeholder="Ex.: salmão entregue com romaneio; fornecedor manda a NF-e amanhã"
+                className={campo}
+              />
+            </label>
+          )}
+        </section>
+      )}
+
       {/* Categoria e data */}
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <label className="block">
@@ -392,7 +476,7 @@ export function FormNota({ modo, hoje, fornecedores: fornecedoresIniciais, maisU
           )}
         </label>
         <label className="block">
-          <span className={rotulo}>Data da nota</span>
+          <span className={rotulo}>{semNota ? "Data de chegada" : "Data da nota"}</span>
           <input
             type="date"
             value={dataEmissao}
@@ -460,7 +544,7 @@ export function FormNota({ modo, hoje, fornecedores: fornecedoresIniciais, maisU
               <span className={rotulo}>Descrição</span>
               <input value={descricao} onChange={(e) => setDescricao(e.target.value)} className={campo} />
             </label>
-            <label className="block sm:col-span-2">
+            <label className={`block sm:col-span-2 ${semNota ? "hidden" : ""}`}>
               <span className={rotulo}>Observação</span>
               <textarea value={observacao} onChange={(e) => setObservacao(e.target.value)} rows={2} className={campo} />
             </label>
@@ -478,6 +562,46 @@ export function FormNota({ modo, hoje, fornecedores: fornecedoresIniciais, maisU
       {/* Barra fixa de ação */}
       <div className="fixed inset-x-0 bottom-0 z-20 border-t border-neutral-200 bg-white/95 px-4 pt-3 pb-[max(.75rem,env(safe-area-inset-bottom))] backdrop-blur">
         <div className="mx-auto max-w-5xl space-y-2">
+          {parecida && (
+            <div
+              role="alertdialog"
+              aria-labelledby="dup-titulo"
+              className={`max-h-[60vh] overflow-y-auto rounded-xl border p-3 text-sm ${parecida.semNota ? "border-amber-400 bg-amber-50" : "border-neutral-300 bg-white"}`}
+            >
+              <p id="dup-titulo" className="font-medium">
+                Já existe uma nota parecida: {dataBR(parecida.data)} · {parecida.fornecedor} · {formatarBRL(parecida.valor)} [{parecida.situacao}]. É a mesma?
+              </p>
+              {parecida.semNota && (
+                <p className="mt-1 text-amber-900">
+                  Essa compra está <strong>aguardando nota fiscal</strong>. Se esta é a nota dela, edite a pendente em vez de criar uma nova.
+                </p>
+              )}
+              <div className="mt-2 flex flex-wrap gap-2">
+                {parecida.semNota && (
+                  <Link href={`/painel/cmv/notas/${parecida.id}/editar?nf=1`} className="rounded-lg bg-amber-600 px-3 py-2 font-semibold text-white">
+                    Editar a pendente (lançar a nota fiscal)
+                  </Link>
+                )}
+                <Link
+                  href={`/painel/cmv/notas/${parecida.id}`}
+                  className={parecida.semNota ? "rounded-lg border border-neutral-300 bg-white px-3 py-2" : "rounded-lg bg-neutral-900 px-3 py-2 font-semibold text-white"}
+                >
+                  Abrir a existente
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => {
+                    duplicidadeConfirmada.current = true;
+                    setParecida(null);
+                    (document.getElementById("form-nota") as HTMLFormElement | null)?.requestSubmit();
+                  }}
+                  className="rounded-lg border border-neutral-300 bg-white px-3 py-2"
+                >
+                  É outra compra, salvar
+                </button>
+              </div>
+            </div>
+          )}
           {erro && (
             <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
               {erro}

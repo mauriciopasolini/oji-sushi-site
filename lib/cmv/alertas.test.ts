@@ -104,6 +104,17 @@ describe("Alertas do painel", () => {
     expect(gerarAlertas({ painel: painel(vendasAte(9)), ehAdmin: true, caixa: { ...caixa, planilhaConfigurada: true, conflitosPendentes: 3 }, mesFechado: true }).some((x) => x.id === "conflitos-venda")).toBe(false);
   });
 
+  it("compras aguardando nota fiscal: aviso com contagem e link para as pendentes", () => {
+    const p = painel(vendasAte(9));
+    expect(gerarAlertas({ painel: p, ehAdmin: false }).some((a) => a.id === "compras-sem-nota")).toBe(false);
+    const a = gerarAlertas({ painel: p, ehAdmin: false, comprasSemNota: 2 }).find((x) => x.id === "compras-sem-nota");
+    expect(a?.titulo).toBe("2 compra(s) aguardando nota fiscal");
+    expect(a?.nivel).toBe("aviso");
+    expect(a?.href).toBe("/painel/cmv/notas?status=aguardando");
+    // pendência é de qualquer mês: aparece mesmo olhando um mês fechado
+    expect(gerarAlertas({ painel: p, ehAdmin: true, mesFechado: true, comprasSemNota: 1 }).some((x) => x.id === "compras-sem-nota")).toBe(true);
+  });
+
   it("formata a lista de dias", () => {
     expect(listarDias(["2026-11-03"])).toBe("03/11");
     expect(listarDias(["2026-11-03", "2026-11-04", "2026-11-07"])).toBe("03, 04 e 07/11");

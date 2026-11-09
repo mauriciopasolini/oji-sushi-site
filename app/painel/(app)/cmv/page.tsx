@@ -145,7 +145,7 @@ export default async function CmvPage({ searchParams }: { searchParams: Promise<
   const ehAdmin = sessao?.perfil?.papel === "admin";
   const supabase = await createClient();
 
-  const [painel, caixa, notaQ, fruteiraQ, novosQ] = await Promise.all([
+  const [painel, caixa, notaQ, fruteiraQ, novosQ, semNotaQ] = await Promise.all([
     carregarPainel(supabase, competencia, hoje),
     carregarCaixa(supabase, competencia),
     sp.nota && RE_UUID.test(sp.nota)
@@ -153,11 +153,12 @@ export default async function CmvPage({ searchParams }: { searchParams: Promise<
       : Promise.resolve({ data: null }),
     supabase.from("fornecedores").select("id").ilike("nome", "fruteira").eq("ativo", true).maybeSingle(),
     ehAdmin ? supabase.from("fornecedores").select("id", { count: "exact", head: true }).is("revisado_em", null) : Promise.resolve({ count: 0 }),
+    supabase.from("notas").select("id", { count: "exact", head: true }).eq("tipo", "sem_nota").eq("status", "ativa"),
   ]);
   const { resultado: r, mes } = painel;
   const mesFechado = mes.status === "fechado";
   const provisorio = r.vendasIncompletas && !mesFechado;
-  const alertas = gerarAlertas({ painel: r, ehAdmin, fornecedoresNovos: novosQ.count ?? 0, mesFechado, caixa });
+  const alertas = gerarAlertas({ painel: r, ehAdmin, fornecedoresNovos: novosQ.count ?? 0, mesFechado, caixa, comprasSemNota: semNotaQ.count ?? 0 });
 
   const [principal, ...outras] = r.categorias;
   const nova = notaQ.data as { valor: number; data_emissao: string; categoria_id: string; fornecedores: { nome: string } | null } | null;

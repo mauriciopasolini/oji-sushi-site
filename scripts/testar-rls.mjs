@@ -147,7 +147,48 @@ try {
     }, (r) => r[0].conferida_por === U.admin && r[0].conferida_em !== null);
     await naoDeve(tx, "admin NÃO muda status do mês por UPDATE direto", async (sp) => { await comoUsuario(sp, U.admin); await sp`update public.meses set status = 'fechado', fechado_em = now() where id = ${nov}`; }, "fechar_mes");
 
+    console.log("\nCompra sem nota (aguardando nota fiscal)");
+    await naoDeve(tx, "gestor NÃO lança 'sem nota' sem observação", async (sp) => { await comoUsuario(sp, U.gestor); await novaNota(sp, { tipo: "sem_nota" }); }, "notas_sem_nota_com_observacao");
+    await naoDeve(tx, "gestor NÃO justifica pendência (só admin)", async (sp) => {
+      await comoUsuario(sp, U.gestor);
+      await novaNota(sp, { tipo: "sem_nota", observacao: "chegou com romaneio", pendencia_justificativa: "x" });
+    }, "administrador");
+    // Pendente criada fora de savepoint: usada pelos testes de fechamento abaixo.
+    const pendente = randomUUID();
+    await comoUsuario(tx, U.gestor);
+    await tx`insert into public.notas ${tx({ id: pendente, data_emissao: "2026-11-08", fornecedor_id: frumar, categoria_id: pescados, valor: 500, foto_path: "2026/11/romaneio.jpg", tipo: "sem_nota", observacao: "salmão com romaneio; NF amanhã" })}`;
+    await tx`reset role`;
+    await deve(tx, "compra sem nota entra ativa (conta no orçamento pela data de chegada)", async (sp) => sp`select status, tipo, mes_id from public.notas where id = ${pendente}`, (r) => r[0].status === "ativa" && r[0].tipo === "sem_nota" && r[0].mes_id === nov);
+    // Pendências reais de novembro (se houver) recebem justificativa só dentro desta transação desfeita.
+    await tx`update public.notas set pendencia_justificativa = 'teste rls' where mes_id = ${nov} and tipo = 'sem_nota' and status = 'ativa' and id <> ${pendente} and pendencia_justificativa is null`;
+    await naoDeve(tx, "admin NÃO fecha o mês com compra sem nota e sem justificativa", async (sp) => { await comoUsuario(sp, U.admin); await sp`select public.fechar_mes(${nov})`; }, "aguardando nota fiscal");
+    await naoDeve(tx, "gestor NÃO justifica pendência existente", async (sp) => { await comoUsuario(sp, U.gestor); await sp`update public.notas set pendencia_justificativa = 'x' where id = ${pendente}`; }, "administrador");
+    // (os savepoints de deve() são liberados, não desfeitos: os passos abaixo se encadeiam)
+    await deve(tx, "admin justifica a pendência sem motivo de edição; a conferência não é reaberta", async (sp) => {
+      await comoUsuario(sp, U.admin);
+      return sp`update public.notas set pendencia_justificativa = '  fornecedor informal, não emite nota  ' where id = ${pendente} returning pendencia_justificativa, conferencia`;
+    }, (r) => r[0].pendencia_justificativa === "fornecedor informal, não emite nota" && r[0].conferencia === "pendente");
+    await deve(tx, "mês com a pendente justificada pode ser fechado (checagem feita e desfeita aqui)", async (sp) => {
+      await comoUsuario(sp, U.admin);
+      await sp`select public.fechar_mes(${nov})`;
+      await sp`reset role`;
+      const [m] = await sp`select status from public.meses where id = ${nov}`;
+      // volta a abrir para os testes seguintes
+      await sp`select set_config('cmv.permitir_status', 'on', true)`;
+      await sp`update public.meses set status = 'aberto', fechado_por = null, fechado_em = null where id = ${nov}`;
+      await sp`select set_config('cmv.permitir_status', 'off', true)`;
+      return m.status;
+    }, (r) => r === "fechado");
+    await deve(tx, "nota fiscal chegou: gestor troca tipo, número, foto e valor com motivo → auditoria guarda a foto antiga; justificativa limpa", async (sp) => {
+      await comoUsuario(sp, U.gestor);
+      const [n2] = await sp`update public.notas set tipo = 'nfe', numero = '4521', foto_path = '2026/11/nf.jpg', valor = 512.40, motivo_edicao = 'Nota fiscal recebida' where id = ${pendente} returning pendencia_justificativa, status`;
+      await sp`reset role`;
+      const [a] = await sp`select antes->>'foto_path' antes, depois->>'foto_path' depois, antes->>'tipo' tipo_antes, motivo from public.auditoria where registro_id = ${pendente} order by id desc limit 1`;
+      return { ...a, just: n2.pendencia_justificativa, status: n2.status };
+    }, (r) => r.antes === "2026/11/romaneio.jpg" && r.depois === "2026/11/nf.jpg" && r.tipo_antes === "sem_nota" && r.motivo === "Nota fiscal recebida" && r.just === null && r.status === "ativa");
+
     // Fecha novembro (fora de savepoint) para os testes de mês fechado.
+    // A pendente acima já virou NF-e: o fechamento passa.
     await comoUsuario(tx, U.admin);
     await tx`select public.fechar_mes(${nov})`;
     await tx`reset role`;

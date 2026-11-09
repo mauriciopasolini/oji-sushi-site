@@ -102,9 +102,21 @@ export function gerarAlertas(params: {
   fornecedoresNovos?: number;
   mesFechado?: boolean;
   caixa?: DadosCaixa;
+  /** compras ativas do tipo "sem nota (aguardando)", de qualquer mês */
+  comprasSemNota?: number;
 }): Alerta[] {
-  const { painel, ehAdmin, fornecedoresNovos = 0, mesFechado = false, caixa } = params;
+  const { painel, ehAdmin, fornecedoresNovos = 0, mesFechado = false, caixa, comprasSemNota = 0 } = params;
   const alertas: Alerta[] = caixa && !mesFechado ? alertasDeCaixa(caixa, ehAdmin) : [];
+
+  if (comprasSemNota > 0) {
+    alertas.push({
+      id: "compras-sem-nota",
+      nivel: "aviso",
+      titulo: `${comprasSemNota} compra(s) aguardando nota fiscal`,
+      detalhe: "Quando a nota chegar, abra a compra e toque em “A nota fiscal chegou”. O mês só fecha sem pendentes ou com justificativa.",
+      href: "/painel/cmv/notas?status=aguardando",
+    });
+  }
 
   if (painel.vendasIncompletas && !mesFechado) {
     alertas.push({
