@@ -189,6 +189,34 @@ try {
       return sp`select a.acao, a.motivo, m.status from public.auditoria a join public.meses m on m.id::text = a.registro_id where a.registro_id = ${nov} order by a.id desc limit 1`;
     }, (r) => r[0]?.acao === "reopen" && r[0]?.motivo === "nota esquecida da Frumar" && r[0]?.status === "aberto");
 
+    console.log("\nFornecedores");
+    await deve(tx, "gestor cria fornecedor (nome + categoria) → fica 'novo', campos de admin zerados", async (sp) => {
+      await comoUsuario(sp, U.gestor);
+      return sp`insert into public.fornecedores (nome, categoria_padrao_id, prazo_vencimento_dias, cnpj, ativo)
+                values ('  Peixaria   do Porto ', ${pescados}, 30, '12345678000199', false)
+                returning nome, criado_por, revisado_em, prazo_vencimento_dias, cnpj, ativo`;
+    }, (r) => r[0].nome === "Peixaria do Porto" && r[0].criado_por === U.gestor && r[0].revisado_em === null
+              && r[0].prazo_vencimento_dias === null && r[0].cnpj === null && r[0].ativo === true);
+    await naoDeve(tx, "gestor NÃO cria fornecedor duplicado (caixa/espaços diferentes)", async (sp) => { await comoUsuario(sp, U.gestor); await sp`insert into public.fornecedores (nome, categoria_padrao_id) values ('FRUMAR ', ${pescados})`; }, "duplicate key");
+    await deve(tx, "gestor NÃO edita fornecedor (0 linhas)", async (sp) => { await comoUsuario(sp, U.gestor); return sp`update public.fornecedores set prazo_vencimento_dias = 10 where id = ${frumar}`; }, (r) => r.count === 0);
+    await deve(tx, "gestor NÃO desativa nem apaga fornecedor (0 linhas)", async (sp) => {
+      await comoUsuario(sp, U.gestor);
+      const a = await sp`update public.fornecedores set ativo = false where id = ${frumar}`;
+      const b = await sp`delete from public.fornecedores where id = ${frumar}`;
+      return a.count + b.count;
+    }, (r) => r === 0);
+    await deve(tx, "admin cria fornecedor → já nasce revisado", async (sp) => { await comoUsuario(sp, U.admin); return sp`insert into public.fornecedores (nome, categoria_padrao_id) values ('Atacadão', ${pescados}) returning revisado_em, revisado_por`; }, (r) => r[0].revisado_em !== null && r[0].revisado_por === U.admin);
+
+    console.log("\nTroca de senha");
+    await deve(tx, "usuário confirma a troca de senha só no próprio perfil", async (sp) => {
+      await sp`update public.perfis set deve_trocar_senha = true where id in (${U.gestor}, ${U.admin})`;
+      await comoUsuario(sp, U.gestor);
+      await sp`select public.confirmar_troca_senha()`;
+      await sp`reset role`;
+      return sp`select id, deve_trocar_senha from public.perfis where id in (${U.gestor}, ${U.admin})`;
+    }, (r) => r.find((x) => x.id === U.gestor)?.deve_trocar_senha === false && r.find((x) => x.id === U.admin)?.deve_trocar_senha === true);
+    await deve(tx, "gestor NÃO altera o próprio perfil diretamente (0 linhas)", async (sp) => { await comoUsuario(sp, U.gestor); return sp`update public.perfis set deve_trocar_senha = false, nome = 'x' where id = ${U.gestor}`; }, (r) => r.count === 0);
+
     console.log("\nSeeds");
     await deve(tx, "categorias somam exatamente 35%", () => tx`select sum(pct_meta) s from public.categorias_cmv`, (r) => r[0].s === "0.3500000000");
     await deve(tx, "pesos de novembro/2026 somam 96.600", () => tx`

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSessao } from "@/lib/cmv/sessao";
 import { sair } from "../login/actions";
@@ -20,6 +21,9 @@ export default async function AreaProtegidaLayout({ children }: { children: Reac
     );
   }
 
+  // Primeiro acesso (senha gerada pelo admin): obriga a trocar antes de usar o painel.
+  if (perfil.deve_trocar_senha) redirect("/painel/conta/senha");
+
   return (
     <>
       <header className="sticky top-0 z-10 border-b border-neutral-200 bg-white/90 backdrop-blur">
@@ -29,6 +33,9 @@ export default async function AreaProtegidaLayout({ children }: { children: Reac
             <span className="text-neutral-600">
               {perfil.nome} <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-xs">{perfil.papel}</span>
             </span>
+            <Link href="/painel/conta/senha" className="text-neutral-600 underline-offset-2 hover:underline">
+              Trocar senha
+            </Link>
             <form action={sair}>
               <button className="font-medium text-neutral-900 underline-offset-2 hover:underline">Sair</button>
             </form>
