@@ -30,6 +30,18 @@ export const LIMIARES_RITMO = {
   amarelo: 0.1,
 } as const;
 
+/**
+ * Cor da barra de vendas (realizado × meta acumulada). Vender acima da meta é bom:
+ * na meta ou acima → verde; até 10% abaixo → amarelo; mais que isso → vermelho.
+ */
+export const LIMIAR_VENDAS_AMARELO = 0.1;
+
+export function corVendas(realizado: number, metaAcumulada: number): "verde" | "amarelo" | "vermelho" {
+  if (metaAcumulada <= 0 || realizado >= metaAcumulada) return "verde";
+  const falta = 1 - realizado / metaAcumulada;
+  return falta <= LIMIAR_VENDAS_AMARELO ? "amarelo" : "vermelho";
+}
+
 // -----------------------------------------------------------------------------
 // Tipos de entrada
 // -----------------------------------------------------------------------------
@@ -428,7 +440,8 @@ export function calcularCmv(params: {
   const vendaBase = vendaBaseErp !== null ? Math.min(vendaCaixa, vendaBaseErp) : vendaCaixa;
   const pct = (v: number) => (vendaBase > 0 ? v / vendaBase : null);
   const cmvReal = estoqueInicial !== null && estoqueFinal !== null ? estoqueInicial + compras - estoqueFinal : null;
-  const cmvComprasPct = pct(compras);
+  // Sem compras lançadas, "0%" seria enganoso (parece CMV ótimo): fica sem valor e sem faixa.
+  const cmvComprasPct = compras > 0 ? pct(compras) : null;
   const cmvRealPct = cmvReal !== null ? pct(cmvReal) : null;
   const cmvPct = cmvRealPct ?? cmvComprasPct;
 
