@@ -12,6 +12,7 @@ import {
   calcularProjecao,
   classificarRegua,
   corDoRitmo,
+  corVendas,
   definirHojeRef,
   metasDiarias,
   somaPesosDoMes,
@@ -387,6 +388,28 @@ describe("CMV e régua", () => {
     const c = calcularCmv({ compras: R(30000), vendaCaixa: R(80000), estoqueInicial: R(5000), regua: REGUA });
     expect(c.cmvReal).toBeNull();
     expect(c.tipo).toBe("compras");
+  });
+
+  it("sem compras lançadas: sem % e sem faixa da régua (não mostra 0% como se fosse ótimo)", () => {
+    const c = calcularCmv({ compras: 0, vendaCaixa: R(30670.84), regua: REGUA });
+    expect(c.cmvComprasPct).toBeNull();
+    expect(c.cmvPct).toBeNull();
+    expect(c.faixa).toBeNull();
+  });
+});
+
+describe("cor da barra de vendas", () => {
+  it("acima da meta é verde (realizado 20,2% acima)", () => {
+    expect(corVendas(R(30670.84), R(25520.19))).toBe("verde");
+    expect(corVendas(R(1000), R(1000))).toBe("verde");
+  });
+  it("até 10% abaixo é amarelo; mais que isso, vermelho", () => {
+    expect(corVendas(R(950), R(1000))).toBe("amarelo");
+    expect(corVendas(R(900), R(1000))).toBe("amarelo");
+    expect(corVendas(R(899.99), R(1000))).toBe("vermelho");
+  });
+  it("sem meta acumulada (início do mês) não acusa nada", () => {
+    expect(corVendas(0, 0)).toBe("verde");
   });
 
   it("faixas da régua, inclusive os limites", () => {

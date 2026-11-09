@@ -4,7 +4,7 @@ import { type Alerta, gerarAlertas, listarDias } from "@/lib/cmv/alertas";
 import { carregarCaixa, carregarPainel } from "@/lib/cmv/dados";
 import { competenciaDe, hojeSP, montar, partes, rotuloSemana } from "@/lib/cmv/datas";
 import { centavos, formatarBRL, formatarPct } from "@/lib/cmv/dinheiro";
-import type { CorSemaforo, OrcamentoCategoria } from "@/lib/cmv/engine";
+import { type CorSemaforo, type OrcamentoCategoria, corVendas } from "@/lib/cmv/engine";
 import { getSessao } from "@/lib/cmv/sessao";
 import { RE_UUID } from "@/lib/cmv/tipos";
 import { createClient } from "@/lib/supabase/server";
@@ -45,12 +45,17 @@ function Semaforo({ cor }: { cor: CorSemaforo }) {
   );
 }
 
-function Barra({ valor, total, escuro = false }: { valor: number; total: number; escuro?: boolean }) {
+const COR_BARRA: Record<CorSemaforo, string> = { verde: "bg-green-500", amarelo: "bg-amber-400", vermelho: "bg-red-500" };
+const COR_TEXTO_VENDAS: Record<CorSemaforo, string> = { verde: "text-green-700", amarelo: "text-amber-700", vermelho: "text-red-700" };
+
+/** Barra de consumo (compras × orçamento): passar do total é ruim. `cor` substitui essa lógica (ex.: vendas). */
+function Barra({ valor, total, escuro = false, cor }: { valor: number; total: number; escuro?: boolean; cor?: CorSemaforo }) {
   const pct = total > 0 ? Math.min(100, (valor / total) * 100) : valor > 0 ? 100 : 0;
   const estourou = valor > total;
+  const preenchimento = cor ? COR_BARRA[cor] : estourou ? "bg-red-500" : pct > 85 ? "bg-amber-400" : escuro ? "bg-white" : "bg-neutral-900";
   return (
     <div className={`h-3 w-full overflow-hidden rounded-full ${escuro ? "bg-white/15" : "bg-neutral-200"}`} role="progressbar" aria-valuenow={Math.round(pct)} aria-valuemin={0} aria-valuemax={100}>
-      <div className={`h-full rounded-full ${estourou ? "bg-red-500" : pct > 85 ? "bg-amber-400" : escuro ? "bg-white" : "bg-neutral-900"}`} style={{ width: `${pct}%` }} />
+      <div className={`h-full rounded-full ${preenchimento}`} style={{ width: `${pct}%` }} />
     </div>
   );
 }
@@ -226,11 +231,11 @@ export default async function CmvPage({ searchParams }: { searchParams: Promise<
             {p.projecaoTendencia !== null && <> · tendência {formatarBRL(p.projecaoTendencia)}</>}
           </p>
           <div className="mt-3 space-y-1">
-            <Barra valor={p.realizado} total={p.metaAcumulada || 1} />
+            <Barra valor={p.realizado} total={p.metaAcumulada || 1} cor={corVendas(p.realizado, p.metaAcumulada)} />
             <p className="text-sm tabular-nums">
               Realizado <strong>{formatarBRL(p.realizado)}</strong> × meta acumulada {formatarBRL(p.metaAcumulada)}
               {p.metaAcumulada > 0 && (
-                <span className={p.fatorRitmo >= 1 ? "text-green-700" : "text-red-700"}> ({formatarPct(p.fatorRitmo - 1, 1).replace(/^(?!-)/, "+")})</span>
+                <span className={COR_TEXTO_VENDAS[corVendas(p.realizado, p.metaAcumulada)]}> ({formatarPct(p.fatorRitmo - 1, 1).replace(/^(?!-)/, "+")})</span>
               )}
             </p>
             <p className="text-xs text-neutral-500">{p.hojeRef ? `Vendas até ${dataBR(p.hojeRef)}` : "Nenhuma venda registrada no mês"}</p>
@@ -261,9 +266,13 @@ export default async function CmvPage({ searchParams }: { searchParams: Promise<
               </span>
             )}
           </div>
-          <p className="text-sm text-neutral-500 tabular-nums">
-            {r.cmv.tipo === "real" ? "CMV real" : "CMV de compras"}: {formatarBRL(r.cmv.compras)} ÷ venda {formatarBRL(r.cmv.vendaBase)} · meta {formatarPct(0.35, 0)}
-          </p>
+          {r.cmv.cmvPct === null && r.cmv.compras === 0 ? (
+            <p className="text-sm text-neutral-500">Sem compras lançadas no mês · meta {formatarPct(0.35, 0)}</p>
+          ) : (
+            <p className="text-sm text-neutral-500 tabular-nums">
+              {r.cmv.tipo === "real" ? "CMV real" : "CMV de compras"}: {formatarBRL(r.cmv.compras)} ÷ venda {formatarBRL(r.cmv.vendaBase)} · meta {formatarPct(0.35, 0)}
+            </p>
+          )}
           <p className="mt-2 text-xs text-neutral-500">
             No meio do mês o CMV de compras oscila (compras se concentram em alguns dias). O valor de referência é o do fechamento.
           </p>
