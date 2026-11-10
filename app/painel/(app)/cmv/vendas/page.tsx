@@ -10,6 +10,7 @@ import { createClient } from "@/lib/supabase/server";
 import { emailContaServico } from "@/lib/cmv/planilha/google";
 import { BotaoSincronizar, ConfigPlanilha, type ConflitoTela, ListaConflitos } from "../sincronizacao/componentes";
 import { compararComMeta } from "@/lib/cmv/meta-dia";
+import { type DiaAtual, mesclarDiaAtual, textoDiaAtual, totalParcial } from "@/lib/cmv/dia-atual";
 import { EditorDia, type VendaExistente } from "./editor-dia";
 import { TotalDia } from "./total-dia";
 
@@ -87,7 +88,17 @@ export default async function VendasPage({ searchParams }: { searchParams: Promi
         }))
     : [];
 
-  const totalMes = dias.reduce((a, d) => a + dia(d).total, 0);
+  // Dia em andamento: enquanto os dois turnos não estiverem preenchidos, é "parcial":
+  // cor neutra, sem ▲▼ e fora do total do mês (como no cálculo do painel).
+  const ehMesAtual = competenciaDe(hoje) === competencia;
+  const hojeX = dia(hoje);
+  const diaHoje = ehMesAtual
+    ? mesclarDiaAtual(hoje, { turno1: hojeX.t1, turno2: hojeX.t2 }, ((ultimaOk?.resumo as { diaAtual?: DiaAtual | null } | null)?.diaAtual ?? null))
+    : null;
+  const hojeParcial = !!diaHoje && !diaHoje.completo;
+  const temParcial = hojeParcial && diaHoje.turnos.some((t) => t.total !== null);
+
+  const totalMes = dias.filter((d) => !(hojeParcial && d === hoje)).reduce((a, d) => a + dia(d).total, 0);
   const mesFechado = mes?.status === "fechado";
 
   return (
@@ -96,8 +107,19 @@ export default async function VendasPage({ searchParams }: { searchParams: Promi
         <h1 className="text-2xl font-bold">Vendas</h1>
         <p className="text-sm text-neutral-600">
           Total no mês <strong className="tabular-nums">{formatarBRL(totalMes)}</strong>
+          {temParcial && <span className="tabular-nums"> + {formatarBRL(totalParcial(diaHoje))} parcial de hoje</span>}
         </p>
       </div>
+      {temParcial && (
+        <p className="rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 tabular-nums">
+          <span className="mr-1.5 rounded bg-neutral-100 px-1.5 py-0.5 text-xs font-medium text-neutral-600">parcial</span>
+          {textoDiaAtual(diaHoje)}
+          <span className="block text-xs text-neutral-500 sm:inline">
+            {" "}
+            · entra no cálculo quando os dois turnos estiverem preenchidos ou na sincronização depois da meia-noite
+          </span>
+        </p>
+      )}
       <section className="rounded-2xl border border-neutral-200 bg-white p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="font-semibold">Planilha de fechamento de caixa</h2>
@@ -191,6 +213,13 @@ export default async function VendasPage({ searchParams }: { searchParams: Promi
                 const x = dia(d);
                 const falta = d <= ontem && !diasRegistrados.has(d);
                 const sel = d === selecionada;
+                const parcial = hojeParcial && d === hoje ? diaHoje : null;
+                const cinza = sel ? "text-neutral-300" : "text-neutral-500";
+                const celTurno = (n: 1 | 2, noBanco: number) => {
+                  if (!parcial) return noBanco ? formatarBRL(noBanco) : "—";
+                  const t = parcial.turnos[n - 1].total;
+                  return t === null ? <span className={`text-xs ${cinza}`}>aguardando</span> : formatarBRL(t);
+                };
                 return (
                   <tr key={d} className={sel ? "bg-neutral-900 text-white" : falta ? "bg-amber-50" : ""}>
                     <td className="px-3 py-2">
@@ -202,10 +231,22 @@ export default async function VendasPage({ searchParams }: { searchParams: Promi
                         {x.fontes.has("manual") && <span className={`ml-1 text-xs ${sel ? "text-neutral-300" : "text-neutral-500"}`}>manual</span>}
                       </Link>
                     </td>
-                    <td className="px-3 py-2 text-right tabular-nums">{x.t1 ? formatarBRL(x.t1) : "—"}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{x.t2 ? formatarBRL(x.t2) : "—"}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{celTurno(1, x.t1)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{celTurno(2, x.t2)}</td>
                     <td className="px-3 py-2 text-right font-semibold tabular-nums">
                       {(() => {
+                        if (parcial) {
+                          const tp = totalParcial(parcial);
+                          if (!tp) return "—";
+                          return (
+                            <span className="inline-flex items-center gap-1.5">
+                              <span className={`rounded px-1 text-[0.65rem] font-medium uppercase tracking-wide ${sel ? "bg-white/15 text-neutral-200" : "bg-neutral-100 text-neutral-600"}`}>
+                                parcial
+                              </span>
+                              {formatarBRL(tp)}
+                            </span>
+                          );
+                        }
                         if (!diasRegistrados.has(d)) return "—";
                         const comp = compararComMeta(x.total, metas.get(d) ?? 0, true);
                         return comp ? <TotalDia valor={formatarBRL(x.total)} comparacao={comp} selecionada={sel} /> : formatarBRL(x.total);

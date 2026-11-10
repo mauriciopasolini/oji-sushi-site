@@ -1,6 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { type DataCivil, competenciaDe, diasNoMes, montar, partes, somarDias } from "./datas";
+import { type DiaAtual, diaCompleto } from "./dia-atual";
 import { centavos } from "./dinheiro";
 import { type ConfigMes, type FaixaRegua, type PesosSemana, type ResultadoPainel, calcularPainel } from "./engine";
 import type { DadosCaixa } from "./alertas";
@@ -42,7 +43,10 @@ export async function fornecedoresMaisUsados(supabase: SupabaseClient, hoje: Dat
 }
 
 /** Dados da planilha de caixa para alertas e status da sincronização. */
-export async function carregarCaixa(supabase: SupabaseClient, competencia: DataCivil): Promise<DadosCaixa & { ultimaOk: string | null }> {
+export async function carregarCaixa(
+  supabase: SupabaseClient,
+  competencia: DataCivil,
+): Promise<DadosCaixa & { ultimaOk: string | null; diaAtual: DiaAtual | null }> {
   const ini = competenciaDe(competencia);
   const fim = fimDoMes(ini);
   const [planilhaQ, ultimaQ, ultimaOkQ, fechQ, catQ, conflitosQ] = await Promise.all([
@@ -68,7 +72,7 @@ export async function carregarCaixa(supabase: SupabaseClient, competencia: DataC
     comNota = new Set((data ?? []).map((n) => n.data_emissao));
   }
 
-  const resumo = (ultimaOkQ.data?.resumo ?? {}) as Partial<DadosCaixa>;
+  const resumo = (ultimaOkQ.data?.resumo ?? {}) as Partial<DadosCaixa> & { diaAtual?: DiaAtual | null };
   return {
     planilhaConfigurada: Boolean(planilhaQ.data?.planilha_url),
     ultimaSync: ultimaQ.data ? { status: ultimaQ.data.status, em: ultimaQ.data.concluido_em ?? ultimaQ.data.iniciado_em, mensagem: ultimaQ.data.erro } : null,
@@ -78,6 +82,7 @@ export async function carregarCaixa(supabase: SupabaseClient, competencia: DataC
     divergencias: resumo.divergencias ?? [],
     mercadoSemNota: diasComMercado.filter(([d]) => !comNota.has(d)).map(([data, valor]) => ({ data, valor })).sort((a, b) => a.data.localeCompare(b.data)),
     conflitosPendentes: conflitosQ.count ?? 0,
+    diaAtual: resumo.diaAtual ?? null,
   };
 }
 
@@ -91,6 +96,8 @@ export async function carregarPainel(
   mes: { id: string | null; status: string; competencia: DataCivil; metaVenda: number };
   ultimaSincronizacao: string | null;
   ultimaVendaManual: string | null;
+  /** totais de hoje por turno, no banco (planilha completa ou lançamento manual) */
+  hojeNoBanco: { turno1: number; turno2: number; completo: boolean };
 }> {
   const ini = competenciaDe(competencia);
   const fim = fimDoMes(ini);
@@ -101,7 +108,7 @@ export async function carregarPainel(
     listarCategorias(supabase),
     supabase.from("regua_cmv").select("faixa, limite_superior_pct, cor, ordem").order("ordem"),
     supabase.from("notas").select("categoria_id, data_emissao, valor, status").eq("status", "ativa").gte("data_emissao", ini).lte("data_emissao", fim),
-    supabase.from("vendas_turno").select("data, total_calculado, fonte, sincronizado_em, atualizado_em").gte("data", ini).lte("data", fim),
+    supabase.from("vendas_turno").select("data, turno, total_calculado, fonte, sincronizado_em, atualizado_em").gte("data", ini).lte("data", fim),
     supabase.from("fechamento_turno").select("data, sincronizado_em").gte("data", ini).lte("data", fim),
   ]);
   for (const q of [mesQ, pesosQ, reguaQ, notasQ, vendasQ, fechQ]) if (q.error) throw new Error(q.error.message);
@@ -123,6 +130,12 @@ export async function carregarPainel(
   const porDia = new Map<string, number>();
   for (const v of vendasQ.data ?? []) porDia.set(v.data, (porDia.get(v.data) ?? 0) + centavos(v.total_calculado));
 
+  // Hoje só conta no cálculo com os dois turnos preenchidos.
+  const deHoje = (turno: number) =>
+    (vendasQ.data ?? []).filter((v) => v.data === hoje && v.turno === turno).reduce((a, v) => a + centavos(v.total_calculado), 0);
+  const hojeNoBanco = { turno1: deHoje(1), turno2: deHoje(2), completo: false };
+  hojeNoBanco.completo = diaCompleto(hojeNoBanco.turno1, hojeNoBanco.turno2);
+
   const regua: FaixaRegua[] = (reguaQ.data ?? []).map((r) => ({
     faixa: r.faixa,
     limiteSuperiorPct: r.limite_superior_pct === null ? null : Number(r.limite_superior_pct),
@@ -138,6 +151,7 @@ export async function carregarPainel(
     // Dia "registrado": tem venda (manual ou planilha) ou aba sincronizada, mesmo que zerada.
     diasComVenda: [...new Set([...porDia.keys(), ...(fechQ.data ?? []).map((f) => f.data)])],
     hoje,
+    hojeCompleto: hojeNoBanco.completo,
     regua,
     vendaBaseErp: mesQ.data?.venda_base_erp != null ? centavos(mesQ.data.venda_base_erp) : null,
   });
@@ -149,5 +163,6 @@ export async function carregarPainel(
     mes: { id: mesQ.data?.id ?? null, status: mesQ.data?.status ?? "aberto", competencia: ini, metaVenda: config.metaVenda },
     ultimaSincronizacao: maior([...(fechQ.data ?? []).map((f) => f.sincronizado_em), ...(vendasQ.data ?? []).map((v) => v.sincronizado_em)]),
     ultimaVendaManual: maior((vendasQ.data ?? []).filter((v) => v.fonte === "manual").map((v) => v.atualizado_em)),
+    hojeNoBanco,
   };
 }

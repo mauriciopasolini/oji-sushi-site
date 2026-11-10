@@ -127,3 +127,36 @@ describe("Planejamento da sincronização", () => {
     expect(p.gravarFechamentos.find((f) => f.turno === 1)?.despesaMercado).toBe(R(87.5));
   });
 });
+
+describe("aba do dia em andamento (parser → dia parcial)", () => {
+  it("turno 2 ainda em branco → parcial com o total do turno 1; os dois preenchidos → completo", async () => {
+    const { avaliarDiaAtual } = await import("../dia-atual");
+    const parcial = avaliarDiaAtual("2026-11-09", lerAbaDiaria(aba({ restPix: 500, ojiOnline: 249.65 }, { restPix: 0, ojiOnline: 0 })));
+    expect(parcial.completo).toBe(false);
+    expect(parcial.turnos).toEqual([
+      { turno: 1, total: R(749.65) },
+      { turno: 2, total: null },
+    ]);
+    const completo = avaliarDiaAtual("2026-11-09", lerAbaDiaria(aba({ restPix: 500, ojiOnline: 249.65 })));
+    expect(completo.completo).toBe(true);
+    expect(completo.turnos[1].total).toBe(R(150));
+  });
+});
+
+describe("dia gravado no meio do preenchimento é atualizado nas sincronizações seguintes", () => {
+  it("linhas da planilha já gravadas (T2 só com restaurante) são regravadas com os valores completos", () => {
+    const dia = "2026-11-10";
+    // 1ª sincronização: T2 só com o restaurante → o dia já conta como completo e é gravado
+    const antes = lerAbaDiaria(aba({ restPix: 500, ojiOnline: 249.65 }, { restPix: 100, ojiOnline: 0 }));
+    const p1 = planejarSincronizacao({ diasEsperados: [dia], lidas: new Map([[dia, { titulo: "10/11", aba: antes, grade: [] }]]), existentes: [], decisoesManterManual: [] });
+    const gravadas: VendaExistente[] = p1.gravarVendas.map((v) => ({ ...v, fonte: "planilha" }));
+    expect(gravadas.find((v) => v.turno === 2 && v.origem === "oji_tele")!.campos.online).toBe(0);
+
+    // Sincronização seguinte (no mesmo dia ou às 04:00): teles preenchidas
+    const depois = lerAbaDiaria(aba({ restPix: 500, ojiOnline: 249.65 }, { restPix: 100, ojiOnline: 80 }));
+    const p2 = planejarSincronizacao({ diasEsperados: [dia], lidas: new Map([[dia, { titulo: "10/11", aba: depois, grade: [] }]]), existentes: gravadas, decisoesManterManual: [] });
+    expect(p2.conflitos).toEqual([]);
+    expect(p2.gravarVendas).toHaveLength(8);
+    expect(p2.gravarVendas.find((v) => v.turno === 2 && v.origem === "oji_tele")!.campos.online).toBe(R(80));
+  });
+});

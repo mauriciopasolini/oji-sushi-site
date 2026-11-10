@@ -4,7 +4,7 @@ import { competenciaDe, hojeSP } from "@/lib/cmv/datas";
 import { paraDecimal } from "@/lib/cmv/dinheiro";
 import { idDaPlanilha } from "@/lib/cmv/planilha/parser";
 import { CAMPOS_PLANILHA } from "@/lib/cmv/planilha/planejar";
-import { INTERVALO_AUTOMATICA_MIN, type ResumoSincronizacao, sincronizarHoje } from "@/lib/cmv/planilha/sincronizar";
+import { type ResumoSincronizacao, precisaSincronizar, sincronizarHoje } from "@/lib/cmv/planilha/sincronizar";
 import { getSessao } from "@/lib/cmv/sessao";
 import { RE_UUID } from "@/lib/cmv/tipos";
 import { createClient } from "@/lib/supabase/server";
@@ -26,7 +26,8 @@ export async function sincronizarAgora(): Promise<Retorno<ResumoSincronizacao[]>
 
 /**
  * Chamada em segundo plano ao abrir o painel: sincroniza se a última sincronização
- * bem-sucedida do mês tiver mais de 30 minutos (ou não existir).
+ * do mês tiver mais de 30 minutos, for de um dia anterior (virou a meia-noite: o dia
+ * que estava parcial passa a contar) ou não existir.
  */
 export async function sincronizarSeNecessario(): Promise<{ executou: boolean }> {
   const sessao = await getSessao();
@@ -41,7 +42,7 @@ export async function sincronizarSeNecessario(): Promise<{ executou: boolean }> 
     .order("iniciado_em", { ascending: false })
     .limit(1)
     .maybeSingle();
-  if (ultima && Date.now() - new Date(ultima.iniciado_em).getTime() < INTERVALO_AUTOMATICA_MIN * 60_000) return { executou: false };
+  if (!precisaSincronizar(ultima?.iniciado_em ?? null, Date.now())) return { executou: false };
   try {
     await sincronizarHoje({ hoje, gatilho: "automatica", usuarioId: sessao.user.id });
     revalidatePath("/painel/cmv", "layout");

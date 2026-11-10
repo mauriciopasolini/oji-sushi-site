@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { type Alerta, gerarAlertas, listarDias } from "@/lib/cmv/alertas";
 import { carregarCaixa, carregarPainel } from "@/lib/cmv/dados";
+import { mesclarDiaAtual, textoDiaAtual } from "@/lib/cmv/dia-atual";
 import { competenciaDe, hojeSP, montar, partes, rotuloSemana } from "@/lib/cmv/datas";
 import { centavos, formatarBRL, formatarPct } from "@/lib/cmv/dinheiro";
 import { type CorSemaforo, type OrcamentoCategoria, corVendas } from "@/lib/cmv/engine";
@@ -166,6 +167,9 @@ export default async function CmvPage({ searchParams }: { searchParams: Promise<
   const catTabela = r.categorias.find((c) => c.categoriaId === sp.cat) ?? principal;
   const p = r.projecao;
   const { ano, mes: m } = partes(competencia);
+  // Dia em andamento: só exibição, fora do cálculo enquanto os dois turnos não estiverem preenchidos.
+  const diaAtual = ehMesAtual ? mesclarDiaAtual(hoje, painel.hojeNoBanco, caixa.diaAtual) : null;
+  const mostrarParcial = diaAtual && !diaAtual.completo && diaAtual.turnos.some((t) => t.total !== null);
 
   return (
     <main className="space-y-5 pb-28">
@@ -240,6 +244,13 @@ export default async function CmvPage({ searchParams }: { searchParams: Promise<
               )}
             </p>
             <p className="text-xs text-neutral-500">{p.hojeRef ? `Vendas até ${dataBR(p.hojeRef)}` : "Nenhuma venda registrada no mês"}</p>
+            {mostrarParcial && (
+              <p className="text-xs text-neutral-600 tabular-nums">
+                <span className="mr-1 rounded bg-neutral-100 px-1.5 py-0.5 font-medium text-neutral-600">parcial</span>
+                {textoDiaAtual(diaAtual)}
+                <span className="text-neutral-500"> (fora da projeção até fechar o dia)</span>
+              </p>
+            )}
           </div>
           <div className="mt-3 space-y-2 border-t border-neutral-100 pt-2 text-xs text-neutral-500">
             <p>

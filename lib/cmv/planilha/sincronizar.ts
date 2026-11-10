@@ -1,6 +1,8 @@
 import "server-only";
 import { fimDoMes } from "@/lib/cmv/dados";
 import { type DataCivil, competenciaDe, diasDoMes, partes, somarDias } from "@/lib/cmv/datas";
+import { type DiaAtual, avaliarDiaAtual } from "@/lib/cmv/dia-atual";
+export { INTERVALO_AUTOMATICA_MIN, precisaSincronizar } from "@/lib/cmv/dia-atual";
 import { centavos, paraDecimal } from "@/lib/cmv/dinheiro";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { lerAbas, listarAbas } from "./google";
@@ -22,10 +24,9 @@ export type ResumoSincronizacao = {
   abasVazias?: string[];
   divergencias?: PlanoSincronizacao["divergencias"];
   avisos?: string[];
+  /** hoje (dia em andamento): turnos já preenchidos na planilha; só exibição enquanto parcial */
+  diaAtual?: DiaAtual | null;
 };
-
-/** Intervalo mínimo entre sincronizações automáticas ao abrir o painel. */
-export const INTERVALO_AUTOMATICA_MIN = 30;
 
 /** Dias do mês que já deveriam ter aba: do dia 1 até ontem (limitado ao mês). */
 export function diasEsperados(competencia: DataCivil, hoje: DataCivil): DataCivil[] {
@@ -122,15 +123,26 @@ export async function sincronizarMes(params: {
     const spreadsheetId = url ? idDaPlanilha(url) : null;
     if (!spreadsheetId) return concluir({ competencia, status: "erro", mensagem: "Planilha do mês não configurada (Vendas → Planilha do mês)." });
 
-    const esperados = diasEsperados(competencia, hoje);
-    if (!esperados.length) return concluir({ competencia, status: "ok", mensagem: "Nenhum dia a sincronizar ainda.", diasLidos: 0, linhasGravadas: 0 });
+    const ateOntem = diasEsperados(competencia, hoje);
+    // Hoje (dia em andamento) também é lido, se for deste mês.
+    const lerHoje = competenciaDe(hoje) === competencia;
+    if (!ateOntem.length && !lerHoje) return concluir({ competencia, status: "ok", mensagem: "Nenhum dia a sincronizar ainda.", diasLidos: 0, linhasGravadas: 0 });
 
-    // Abas do mês até ontem
+    // Abas do mês até hoje
     const { ano, mes: numMes } = partes(competencia);
+    const aLer = lerHoje ? [...ateOntem, hoje] : ateOntem;
     const abas = (await listarAbas(spreadsheetId)).map((a) => ({ titulo: a.titulo, data: dataDaAba(a.titulo, ano) }));
-    const doMes = abas.filter((a): a is { titulo: string; data: string } => !!a.data && Number(a.data.slice(5, 7)) === numMes && esperados.includes(a.data));
+    const doMes = abas.filter((a): a is { titulo: string; data: string } => !!a.data && Number(a.data.slice(5, 7)) === numMes && aLer.includes(a.data));
     const grades = await lerAbas(spreadsheetId, doMes.map((a) => a.titulo));
     const lidas = new Map(doMes.map((a) => [a.data, { titulo: a.titulo, aba: lerAbaDiaria(grades.get(a.titulo) ?? []), grade: grades.get(a.titulo) ?? [] }]));
+
+    // Hoje entra na gravação (e portanto no cálculo) só com os dois turnos preenchidos.
+    // Parcial: não grava nada; os turnos preenchidos ficam no resumo, para exibição.
+    const diaAtual = lerHoje ? avaliarDiaAtual(hoje, lidas.get(hoje)?.aba ?? null) : null;
+    const esperados = diaAtual?.completo ? [...ateOntem, hoje] : ateOntem;
+    if (!esperados.length) {
+      return concluir({ competencia, status: "ok", mensagem: "Dia em andamento lido (parcial).", diasLidos: 0, linhasGravadas: 0, diaAtual, abasFaltando: [], abasVazias: [], divergencias: [] });
+    }
 
     // Estado atual no banco
     const ini = esperados[0];
@@ -163,6 +175,7 @@ export async function sincronizarMes(params: {
         abasVazias: plano.abasVazias,
         divergencias: plano.divergencias,
         avisos: plano.avisos,
+        diaAtual,
         plano,
       });
     }
@@ -213,6 +226,7 @@ export async function sincronizarMes(params: {
 
     const partesMsg = [
       `${plano.diasLidos.length} dia(s) lido(s)`,
+      diaAtual && !diaAtual.completo ? "hoje parcial" : "",
       plano.conflitos.length ? `${plano.conflitos.length} conflito(s) com vendas manuais` : "",
       plano.abasFaltando.length ? `${plano.abasFaltando.length} aba(s) faltando` : "",
       plano.abasVazias.length ? `${plano.abasVazias.length} aba(s) vazia(s)` : "",
@@ -232,6 +246,7 @@ export async function sincronizarMes(params: {
       abasVazias: plano.abasVazias,
       divergencias: plano.divergencias,
       avisos: plano.avisos,
+      diaAtual,
     });
   } catch (e) {
     const msg = (e as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message ?? (e as Error).message;
