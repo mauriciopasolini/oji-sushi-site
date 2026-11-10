@@ -166,3 +166,18 @@ Registro cronológico. Cada item: decisão, motivo e data.
     - Só o admin grava a justificativa (trigger `notas_0_sem_nota`), na página da nota. Ela não é campo de negócio: não exige motivo nem reabre a conferência, mas fica auditada.
     - A justificativa é limpa quando a nota deixa de ser `sem_nota`.
     - A tela de fechamento (Etapa 7) vai mostrar isso como item do checklist.
+
+## 2026-11-10 — Dia em andamento (pedido do Mauricio)
+
+87. **A sincronização também lê a aba de hoje, mas o dia parcial não entra no cálculo.**
+    - **Turno preenchido** = soma das partes das origens > 0. **Dia completo** = os dois turnos preenchidos (`lib/cmv/dia-atual.ts`, funções puras com testes).
+    - **Parcial:** nada de hoje é gravado em `vendas_turno` nem em `fechamento_turno`. Os turnos lidos ficam só no resumo da sincronização (`sincronizacoes.resumo.diaAtual`), sem migração. Não gera alerta de aba faltando/vazia nem conflito com venda manual.
+    - **Completo:** hoje entra no plano como qualquer dia (gravação, conflitos, divergências) e passa a contar. Cada nova sincronização no mesmo dia regrava os valores (upsert).
+    - **Motor:** `calcularPainel` ganhou `hojeCompleto` (padrão `false`). Sem ele, as vendas de hoje ficam fora de tudo: projeção, ritmo (fator), cores e CMV. Com ele, `hoje_ref` pode ser hoje. O painel calcula `hojeCompleto` pelo banco: turnos 1 e 2 com total > 0, venha da planilha ou de lançamento manual.
+    - **Depois da meia-noite** o dia vira "ontem" e a sincronização o grava como sempre, completo ou não. A sincronização automática ao abrir o painel passa a rodar também quando a última foi num **dia anterior** (em SP), mesmo com menos de 30 min (`precisaSincronizar`). O cron das 04:00 continua.
+    - **Exibição:**
+      - no painel, abaixo de "Vendas até…": etiqueta "parcial" + "10/11 · Turno 1: R$ 1.654,23 · Turno 2: aguardando";
+      - na tela Vendas, a mesma linha no topo, e na linha de hoje da grade os turnos com valor, "aguardando" e o Total em cor neutra com a etiqueta "parcial" (sem ▲▼);
+      - o "Total no mês" exclui o parcial e mostra "+ R$ X parcial de hoje".
+    - **Banco × planilha:** turno a turno, vale o banco (ex.: lançamento manual) quando tem valor; senão, a leitura da planilha.
+    - **Limitação aceita:** se a planilha ficar completa, for gravada e depois um turno for apagado no mesmo dia, o valor gravado permanece até a sincronização depois da meia-noite, que regrava o dia.

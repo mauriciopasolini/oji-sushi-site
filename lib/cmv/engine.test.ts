@@ -461,3 +461,47 @@ describe("Dinheiro e formatação", () => {
     expect(rotuloSemana(semanasDoMes("2026-11-01")[1])).toBe("08 a 14/11");
   });
 });
+
+describe("Dia em andamento (hoje parcial) fica fora do cálculo", () => {
+  const base = { config: novembro, categorias: CATEGORIAS, notas: [], hoje: "2026-11-09", regua: REGUA };
+  const semHoje = calcularPainel({ ...base, vendas: VENDAS_1_A_8 });
+  const comParcial = [...VENDAS_1_A_8, { data: "2026-11-09", total: R(749.65) }];
+
+  it("parcial: projeção, ritmo, tetos e CMV iguais aos de antes do dia começar", () => {
+    const p = calcularPainel({ ...base, vendas: comParcial });
+    expect(p.projecao).toEqual(semHoje.projecao);
+    expect(p.projecao.hojeRef).toBe("2026-11-08");
+    perto(p.projecao.projecao, R(100273.65), 1);
+    expect(p.tetoTotal).toBe(semHoje.tetoTotal);
+    expect(p.cmv).toEqual(semHoje.cmv);
+  });
+
+  it("parcial informado em diasComVenda também não vira hoje_ref", () => {
+    const p = calcularPainel({ ...base, vendas: comParcial, diasComVenda: comParcial.map((v) => v.data) });
+    expect(p.projecao.hojeRef).toBe("2026-11-08");
+    expect(p.projecao.realizado).toBe(R(30793.84));
+  });
+
+  it("completo (dois turnos): hoje entra em realizado, meta acumulada e ritmo", () => {
+    const vendas = [...VENDAS_1_A_8, { data: "2026-11-09", total: R(4000) }];
+    const p = calcularPainel({ ...base, vendas, hojeCompleto: true });
+    const metas = metasDiarias(novembro);
+    expect(p.projecao.hojeRef).toBe("2026-11-09");
+    expect(p.projecao.diasDecorridos).toBe(9);
+    expect(p.projecao.realizado).toBe(R(34793.84));
+    expect(p.projecao.metaAcumulada).toBe(metas[8].metaAcumulada);
+    expect(p.projecao.fatorRitmo).toBeCloseTo(R(34793.84) / metas[8].metaAcumulada, 10);
+    expect(p.diasSemVenda).toEqual([]);
+  });
+
+  it("definirHojeRef: hoje só com hojeCompleto", () => {
+    const dias = ["2026-11-08", "2026-11-09"];
+    expect(definirHojeRef("2026-11-09", dias)).toBe("2026-11-08");
+    expect(definirHojeRef("2026-11-09", dias, true)).toBe("2026-11-09");
+  });
+
+  it("mês já encerrado: todos os dias contam normalmente", () => {
+    const p = calcularPainel({ ...base, hoje: "2026-12-05", vendas: VENDAS_1_A_8 });
+    expect(p.projecao.realizado).toBe(R(30793.84));
+  });
+});

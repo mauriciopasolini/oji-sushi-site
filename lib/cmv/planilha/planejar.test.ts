@@ -127,3 +127,18 @@ describe("Planejamento da sincronização", () => {
     expect(p.gravarFechamentos.find((f) => f.turno === 1)?.despesaMercado).toBe(R(87.5));
   });
 });
+
+describe("aba do dia em andamento (parser → dia parcial)", () => {
+  it("turno 2 ainda em branco → parcial com o total do turno 1; os dois preenchidos → completo", async () => {
+    const { avaliarDiaAtual } = await import("../dia-atual");
+    const parcial = avaliarDiaAtual("2026-11-09", lerAbaDiaria(aba({ restPix: 500, ojiOnline: 249.65 }, { restPix: 0, ojiOnline: 0 })));
+    expect(parcial.completo).toBe(false);
+    expect(parcial.turnos).toEqual([
+      { turno: 1, total: R(749.65) },
+      { turno: 2, total: null },
+    ]);
+    const completo = avaliarDiaAtual("2026-11-09", lerAbaDiaria(aba({ restPix: 500, ojiOnline: 249.65 })));
+    expect(completo.completo).toBe(true);
+    expect(completo.turnos[1].total).toBe(R(150));
+  });
+});

@@ -1,6 +1,6 @@
 # Status do módulo de CMV
 
-Atualizado em **09/11/2026**, no fim da sessão. Branch de trabalho: `cmv/etapa-1`. Produção: `main`, publicada em https://www.ojisushi.com.br.
+Atualizado em **10/11/2026**. Branch de trabalho: `cmv/etapa-1`. Produção: `main`, publicada em https://www.ojisushi.com.br.
 
 ## 1. Pronto e em produção
 
@@ -33,7 +33,7 @@ O último merge na `main` é o `8740515`. A `cmv/etapa-1` está igual à `main`.
 
 ## 2. Só na branch, aguardando merge
 
-Nada. Tudo o que foi feito hoje já está na `main`.
+- **Dia em andamento (decisão 87):** a sincronização lê também a aba de hoje. Os turnos preenchidos aparecem como "parcial" no painel e na tela Vendas, fora do cálculo até os dois turnos estarem preenchidos ou até a sincronização depois da meia-noite. Aguarda o OK do Mauricio para o merge.
 
 ## 3. Pendências abertas
 
@@ -83,7 +83,7 @@ Na Vercel (Production e Preview) estão todas, menos `SUPABASE_DB_URL`. Para env
 git checkout cmv/etapa-1 && git pull
 npm install
 npm run db:status          # migrações aplicadas (8, até 20261111090000_compra_sem_nota.sql)
-npm test                   # 105 testes de cálculo
+npm test                   # 125 testes de cálculo
 npm run db:test-rls        # 62 testes de regras no banco (transação desfeita: não grava nada)
 npm run typecheck
 npm run build && npx next start -p 3123   # servidor local

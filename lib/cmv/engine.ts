@@ -128,12 +128,14 @@ export function metasDiarias(config: ConfigMes): MetaDia[] {
 
 // -----------------------------------------------------------------------------
 // Data de referência das vendas
-//   hoje_ref = ontem, ou o último dia com venda sincronizada e completa
+//   hoje_ref = ontem, ou o último dia com venda sincronizada e completa.
+//   Hoje só entra se estiver completo (os dois turnos preenchidos); um dia
+//   parcial não conta na projeção, no ritmo nem no CMV.
 // -----------------------------------------------------------------------------
 
-export function definirHojeRef(hoje: DataCivil, diasComVendaCompleta: DataCivil[]): DataCivil | null {
-  const ontem = somarDias(hoje, -1);
-  const candidatos = diasComVendaCompleta.filter((d) => d <= ontem).sort();
+export function definirHojeRef(hoje: DataCivil, diasComVendaCompleta: DataCivil[], hojeCompleto = false): DataCivil | null {
+  const limite = hojeCompleto ? hoje : somarDias(hoje, -1);
+  const candidatos = diasComVendaCompleta.filter((d) => d <= limite).sort();
   return candidatos.length ? candidatos[candidatos.length - 1] : null;
 }
 
@@ -488,15 +490,20 @@ export function calcularPainel(params: {
   hojeRef?: DataCivil | null;
   /** dias com venda registrada (inclusive os de valor zero); se omitido, os dias de `vendas` */
   diasComVenda?: DataCivil[];
+  /** hoje já tem os dois turnos preenchidos? Se não (padrão), a venda de hoje é ignorada no cálculo. */
+  hojeCompleto?: boolean;
   regua: FaixaRegua[];
   vendaBaseErp?: Centavos | null;
   estoqueInicial?: Centavos | null;
   estoqueFinal?: Centavos | null;
 }): ResultadoPainel {
   const { config, hoje } = params;
-  const vendasMes = params.vendas.filter((v) => mesmoMes(v.data, config.competencia));
-  const diasComVenda = params.diasComVenda ?? vendasMes.map((v) => v.data);
-  const hojeRef = params.hojeRef !== undefined ? params.hojeRef : definirHojeRef(hoje, diasComVenda);
+  const hojeCompleto = params.hojeCompleto ?? false;
+  // Dia parcial (hoje incompleto) fica fora de tudo: projeção, ritmo e CMV.
+  const conta = (d: DataCivil) => d < hoje || (hojeCompleto && d === hoje);
+  const vendasMes = params.vendas.filter((v) => mesmoMes(v.data, config.competencia) && conta(v.data));
+  const diasComVenda = (params.diasComVenda ?? vendasMes.map((v) => v.data)).filter(conta);
+  const hojeRef = params.hojeRef !== undefined ? params.hojeRef : definirHojeRef(hoje, diasComVenda, hojeCompleto);
   const faltando = diasSemVenda(config.competencia, hoje, diasComVenda);
 
   const projecao = calcularProjecao({ config, vendas: vendasMes, hojeRef });
