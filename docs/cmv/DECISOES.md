@@ -180,4 +180,5 @@ Registro cronológico. Cada item: decisão, motivo e data.
       - na tela Vendas, a mesma linha no topo, e na linha de hoje da grade os turnos com valor, "aguardando" e o Total em cor neutra com a etiqueta "parcial" (sem ▲▼);
       - o "Total no mês" exclui o parcial e mostra "+ R$ X parcial de hoje".
     - **Banco × planilha:** turno a turno, vale o banco (ex.: lançamento manual) quando tem valor; senão, a leitura da planilha.
+    - **Dia gravado no meio do preenchimento** (ex.: T2 só com o restaurante): as linhas são da planilha, então cada sincronização seguinte do mesmo dia e a das 04:00 (em que ele já é "ontem") regravam o dia inteiro com os valores atuais da planilha (upsert, sem conflito). Teste em `planejar.test.ts`.
     - **Limitação aceita:** se a planilha ficar completa, for gravada e depois um turno for apagado no mesmo dia, o valor gravado permanece até a sincronização depois da meia-noite, que regrava o dia.

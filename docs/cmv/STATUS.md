@@ -83,7 +83,7 @@ Na Vercel (Production e Preview) estão todas, menos `SUPABASE_DB_URL`. Para env
 git checkout cmv/etapa-1 && git pull
 npm install
 npm run db:status          # migrações aplicadas (8, até 20261111090000_compra_sem_nota.sql)
-npm test                   # 125 testes de cálculo
+npm test                   # 126 testes de cálculo
 npm run db:test-rls        # 62 testes de regras no banco (transação desfeita: não grava nada)
 npm run typecheck
 npm run build && npx next start -p 3123   # servidor local
