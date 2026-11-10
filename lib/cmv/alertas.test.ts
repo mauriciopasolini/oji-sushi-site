@@ -120,3 +120,22 @@ describe("Alertas do painel", () => {
     expect(listarDias(["2026-11-03", "2026-11-04", "2026-11-07"])).toBe("03, 04 e 07/11");
   });
 });
+
+describe("Ritmo de compra sem prorrateio (cenário de 10/11/2026)", () => {
+  const nota = (data: string, reais: number): NotaCalc => ({ categoriaId: "pescados", data, valor: R(reais), status: "ativa" });
+  const notas = [nota("2026-11-02", 6868.73), nota("2026-11-09", 5171.46)];
+
+  it("compras de seg (S2) dentro do orçamento da semana inteira → sem alerta de ritmo", () => {
+    const p = painel(vendasAte(9), notas);
+    const alertas = gerarAlertas({ painel: p, ehAdmin: true });
+    expect(alertas.some((a) => a.id.startsWith("ritmo-"))).toBe(false);
+    expect(p.categorias[0].ritmo.cor).toBe("verde");
+  });
+
+  it("acima das semanas encerradas + orçamento inteiro da semana atual → alerta de ritmo (ou de semana estourada)", () => {
+    const p = painel(vendasAte(9), [...notas, nota("2026-11-10", 9000)]);
+    const alertas = gerarAlertas({ painel: p, ehAdmin: true });
+    expect(p.categorias[0].ritmo.desvio).toBeGreaterThan(0);
+    expect(alertas.some((a) => a.id.startsWith("ritmo-") || a.id.startsWith("estouro-semana-"))).toBe(true);
+  });
+});

@@ -7,6 +7,10 @@ import {
   type NotaCalc,
   type VendaDia,
   calcularCmv,
+  calcularCmvProjetado,
+  calcularCmvSemanas,
+  planejadoRestante,
+  reguaDaCategoria,
   calcularOrcamentoCategoria,
   calcularPainel,
   calcularProjecao,
@@ -230,7 +234,7 @@ describe("7. Semanas do mês: dias 29–31 na S4; meses de 28, 29, 30 e 31 dias"
     const o = calcularOrcamentoCategoria({ config: janeiro, categoria: PESCADOS, projecao: R(90000), notas: [nota("2026-01-31", 1000)], hoje: "2026-02-03" });
     expect(o.semanas[3].comprado).toBe(R(1000));
     expect(o.semanaAtual).toBeNull();
-    expect(o.ritmo.esperadoAteHoje).toBe(o.semanas.reduce((a, s) => a + s.orcamento, 0));
+    expect(o.ritmo.esperadoAteFimDaSemana).toBe(o.semanas.reduce((a, s) => a + s.orcamento, 0));
   });
 
   it("meta diária fecha exatamente a meta do mês em meses de 28 a 31 dias", () => {
@@ -355,12 +359,12 @@ describe("Ritmo de compra (semáforo)", () => {
     expect(corDoRitmo(Infinity)).toBe("vermelho");
   });
 
-  it("esperado = semanas encerradas + parte proporcional da semana atual", () => {
+  it("esperado = semanas encerradas + orçamento INTEIRO da semana atual (sem prorratear por dia)", () => {
     const p = projecaoNovembro();
-    // 10/11 = 3º dia da S2 (8 a 14)
+    // 10/11 = 3º dia da S2 (8 a 14): a semana atual entra inteira, não 3/7 dela
     const o = calcularOrcamentoCategoria({ config: novembro, categoria: PESCADOS, projecao: p.projecao, notas: [nota("2026-11-03", 8000)], hoje: "2026-11-10" });
-    const esperado = o.semanas[0].orcamento + Math.round((o.semanas[1].orcamento * 3) / 7);
-    expect(o.ritmo.esperadoAteHoje).toBe(esperado);
+    const esperado = o.semanas[0].orcamento + o.semanas[1].orcamento;
+    expect(o.ritmo.esperadoAteFimDaSemana).toBe(esperado);
     expect(o.ritmo.desvio).toBe(R(8000) - esperado);
   });
 });
@@ -503,5 +507,106 @@ describe("Dia em andamento (hoje parcial) fica fora do cálculo", () => {
   it("mês já encerrado: todos os dias contam normalmente", () => {
     const p = calcularPainel({ ...base, hoje: "2026-12-05", vendas: VENDAS_1_A_8 });
     expect(p.projecao.realizado).toBe(R(30793.84));
+  });
+});
+
+// -----------------------------------------------------------------------------
+// Indicadores de CMV: projetado, por semana fechada e ritmo sem prorrateio
+// Cenário real de 10/11/2026 (pedido do Mauricio).
+// -----------------------------------------------------------------------------
+describe("CMV projetado, CMV por semana e ritmo — cenário de 10/11/2026", () => {
+  const PROJECAO = R(100517.64);
+  const NOTAS: NotaCalc[] = [nota("2026-11-02", 6868.73), nota("2026-11-09", 5171.46)];
+  const o = calcularOrcamentoCategoria({ config: novembro, categoria: PESCADOS, projecao: PROJECAO, notas: NOTAS, hoje: "2026-11-10" });
+
+  it("planejado original de Pescados: 7.259,61 · 7.259,60 · 6.142,75 · 6.142,74", () => {
+    expect(o.semanas.map((s) => s.planejadoOriginal)).toEqual([R(7259.61), R(7259.6), R(6142.75), R(6142.74)]);
+  });
+
+  it("CMV projetado de Pescados ≈ 26,28%", () => {
+    const cp = calcularCmvProjetado({ categorias: [{ ...o, pctMeta: PESCADOS.pctMeta }], projecao: PROJECAO, metaCmvPct: 0.35, regua: REGUA });
+    const cat = cp.porCategoria[0];
+    // restante = S3 + S4 + (S2 planejado − S2 comprado) = 6.142,75 + 6.142,74 + 2.088,14
+    expect(cat.planejadoRestante).toBe(R(14373.63));
+    expect(cat.projetado).toBe(R(26413.82));
+    expect(cat.pct).toBeCloseTo(0.2628, 4);
+    expect(cat.faixa?.faixa).toBe("Ótimo"); // régua escalada: Ótimo ≤ 27,43% para Pescados
+    expect(cp.podeComprar).toBe(Math.round(PROJECAO * 0.35) - R(12040.19));
+  });
+
+  it("compra além do planejado da semana atual não é abatida do restante (planejado original)", () => {
+    const acima = calcularOrcamentoCategoria({
+      config: novembro, categoria: PESCADOS, projecao: PROJECAO, notas: [...NOTAS, nota("2026-11-10", 3000)], hoje: "2026-11-10",
+    });
+    // S2 comprado 8.171,46 > planejado 7.259,60 → a semana atual não soma nada; o excesso aparece no projetado
+    expect(planejadoRestante(acima.semanas)).toBe(R(6142.75 + 6142.74));
+  });
+
+  it("ritmo: comprado 12.040,19 ≤ S1 + S2 inteira → verde e sem alerta de ritmo", () => {
+    expect(o.ritmo.esperadoAteFimDaSemana).toBe(o.semanas[0].orcamento + o.semanas[1].orcamento);
+    expect(o.ritmo.desvio).toBeLessThanOrEqual(0);
+    expect(o.ritmo.cor).toBe("verde");
+    expect(o.estouroSemana).toBe(false);
+  });
+
+  it("CMV por semana: S1 Pescados = 6.868,73 ÷ 25.624,26 = 26,81%; S2 em andamento, sem %", () => {
+    const vendas: VendaDia[] = [
+      ...Array.from({ length: 6 }, (_, i) => ({ data: `2026-11-0${i + 1}`, total: R(3660.61) })),
+      { data: "2026-11-07", total: R(3660.6) },
+      { data: "2026-11-08", total: R(5046.58) },
+      { data: "2026-11-09", total: R(3022.27) },
+    ];
+    const cs = calcularCmvSemanas({
+      config: novembro, categorias: CATEGORIAS, notas: NOTAS, vendas, diasComVenda: vendas.map((v) => v.data), hoje: "2026-11-10", regua: REGUA,
+    });
+    const [s1, s2, s3, s4] = cs.semanas;
+    expect(s1.situacao).toBe("fechada");
+    expect(s1.venda).toBe(R(25624.26));
+    expect(s1.comprasPorCategoria.pescados).toBe(R(6868.73));
+    expect(s1.pctPorCategoria.pescados).toBeCloseTo(0.2681, 4);
+    expect(s1.faixaPorCategoria.pescados?.faixa).toBe("Ótimo");
+    expect(s1.pct).toBeCloseTo(0.2681, 4); // só Pescados comprado na S1
+    expect(s2.situacao).toBe("em_andamento");
+    expect(s2.pct).toBeNull();
+    expect(s2.pctPorCategoria.pescados).toBeNull();
+    expect(s2.venda).toBe(R(5046.58 + 3022.27)); // parcial, só exibição
+    expect(s2.compras).toBe(R(5171.46));
+    expect([s3.situacao, s4.situacao]).toEqual(["futura", "futura"]);
+    expect(cs.acumulado?.semanas).toEqual([1]);
+    expect(cs.acumulado?.pctPorCategoria.pescados).toBeCloseTo(0.2681, 4);
+  });
+
+  it("semana já passada com dia sem venda fica 'aguardando vendas', sem %, e fora do acumulado", () => {
+    const vendas: VendaDia[] = Array.from({ length: 6 }, (_, i) => ({ data: `2026-11-0${i + 1}`, total: R(3000) }));
+    const cs = calcularCmvSemanas({
+      config: novembro, categorias: CATEGORIAS, notas: NOTAS, vendas, diasComVenda: vendas.map((v) => v.data), hoje: "2026-11-10", regua: REGUA,
+    });
+    expect(cs.semanas[0].situacao).toBe("aguardando_vendas");
+    expect(cs.semanas[0].pct).toBeNull();
+    expect(cs.acumulado).toBeNull();
+  });
+
+  it("acumulado de S1+S2 compensa a compra de sexta que caiu na semana seguinte", () => {
+    const vendas: VendaDia[] = Array.from({ length: 14 }, (_, i) => ({ data: `2026-11-${String(i + 1).padStart(2, "0")}`, total: R(1000) }));
+    const notas = [nota("2026-11-06", 1500), nota("2026-11-13", 3500)];
+    const cs = calcularCmvSemanas({ config: novembro, categorias: CATEGORIAS, notas, vendas, diasComVenda: vendas.map((v) => v.data), hoje: "2026-11-15", regua: REGUA });
+    expect(cs.semanas[0].pct).toBeCloseTo(1500 / 7000, 6);
+    expect(cs.semanas[1].pct).toBeCloseTo(3500 / 7000, 6);
+    expect(cs.acumulado?.semanas).toEqual([1, 2]);
+    expect(cs.acumulado?.pct).toBeCloseTo(5000 / 14000, 6);
+    expect(cs.acumulado?.faixa?.faixa).toBe("Ótimo"); // 35,7% ≤ 36%
+  });
+
+  it("régua da categoria = régua do total escalada pela meta da categoria", () => {
+    const r = reguaDaCategoria(REGUA, PESCADOS.pctMeta, 0.35);
+    expect(r[0].limiteSuperiorPct).toBeCloseTo(0.36 * (0.2666666667 / 0.35), 8);
+    expect(r[3].limiteSuperiorPct).toBeNull();
+  });
+
+  it("painel: o CMV projetado e as semanas vêm junto com o resultado", () => {
+    const p = calcularPainel({ config: novembro, categorias: CATEGORIAS, notas: NOTAS, vendas: VENDAS_1_A_8, hoje: "2026-11-09", regua: REGUA });
+    expect(p.cmvProjetado.porCategoria).toHaveLength(4);
+    expect(p.cmvSemanas.semanas).toHaveLength(4);
+    expect(p.cmvSemanas.semanas[0].situacao).toBe("fechada");
   });
 });

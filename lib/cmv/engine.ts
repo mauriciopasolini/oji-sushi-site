@@ -22,7 +22,11 @@ import type { Centavos } from "./dinheiro";
 // Constantes configuráveis
 // -----------------------------------------------------------------------------
 
-/** Semáforo do ritmo de compra: desvio sobre o esperado até hoje. */
+/**
+ * Semáforo do ritmo de compra: desvio sobre o planejado até o FIM da semana atual
+ * (semanas encerradas + orçamento inteiro da semana atual, sem prorratear por dia:
+ * as compras são concentradas na segunda e na sexta).
+ */
 export const LIMIARES_RITMO = {
   /** até este desvio (fração) → verde */
   verde: 0,
@@ -264,7 +268,8 @@ export type OrcamentoCategoria = {
 };
 
 export type Ritmo = {
-  esperadoAteHoje: Centavos;
+  /** orçamento das semanas encerradas + orçamento inteiro da semana atual (mês encerrado: tudo) */
+  esperadoAteFimDaSemana: Centavos;
   comprado: Centavos;
   desvio: Centavos;
   /** desvio / esperado; Infinity se esperado = 0 e já houve compra */
@@ -313,7 +318,7 @@ export function calcularOrcamentoCategoria(params: {
   });
   const tetoSemana = planejado.map((p) => Math.round(p * config.limiteAcumuloPct));
 
-  const { semanaAtual, diasDecorridosSemana, encerrado } = situacaoNoMes(config.competencia, hoje);
+  const { semanaAtual, encerrado } = situacaoNoMes(config.competencia, hoje);
   const k = semanaAtual ?? 5; // mês encerrado: todas as semanas são passadas
 
   const compradoAntes = (j: number) => soma(comprado.slice(0, j - 1));
@@ -368,12 +373,10 @@ export function calcularOrcamentoCategoria(params: {
   const compradoSemana = encerrado ? 0 : comprado[k - 1];
   const disponivelAgora = orcamentoSemana - compradoSemana;
 
-  // Ritmo de compra
-  const esperadoAteHoje = encerrado
-    ? soma(orcamentos)
-    : soma(orcamentos.slice(0, k - 1)) + Math.round((orcamentos[k - 1] * diasDecorridosSemana) / semanas[k - 1].dias);
-  const desvio = compradoMes - esperadoAteHoje;
-  const desvioPct = esperadoAteHoje > 0 ? desvio / esperadoAteHoje : compradoMes > 0 ? Infinity : 0;
+  // Ritmo de compra: sem prorratear a semana atual por dia (compra de segunda abastece seg–qui).
+  const esperado = encerrado ? soma(orcamentos) : soma(orcamentos.slice(0, k));
+  const desvio = compradoMes - esperado;
+  const desvioPct = esperado > 0 ? desvio / esperado : compradoMes > 0 ? Infinity : 0;
 
   return {
     categoriaId: categoria.id,
@@ -391,7 +394,7 @@ export function calcularOrcamentoCategoria(params: {
     semanas: semanasOrc,
     alocadoMes,
     reserva: teto - alocadoMes,
-    ritmo: { esperadoAteHoje, comprado: compradoMes, desvio, desvioPct, cor: corDoRitmo(desvioPct) },
+    ritmo: { esperadoAteFimDaSemana: esperado, comprado: compradoMes, desvio, desvioPct, cor: corDoRitmo(desvioPct) },
   };
 }
 
@@ -465,6 +468,176 @@ export function calcularCmv(params: {
 }
 
 // -----------------------------------------------------------------------------
+// Régua por categoria: a régua do total (meta 35%) escalada para a meta da categoria.
+//   limite_cat = limite_total × pct_meta_cat / meta_cmv_pct
+// Ex.: Pescados (26,67%): Ótimo ≤ 27,43% · Bom ≤ 28,57% · Atenção ≤ 29,71% · Crítico acima.
+// -----------------------------------------------------------------------------
+
+export function reguaDaCategoria(regua: FaixaRegua[], pctMetaCategoria: number, metaCmvPct: number): FaixaRegua[] {
+  const fator = metaCmvPct > 0 ? pctMetaCategoria / metaCmvPct : 1;
+  return regua.map((f) => ({ ...f, limiteSuperiorPct: f.limiteSuperiorPct === null ? null : f.limiteSuperiorPct * fator }));
+}
+
+// -----------------------------------------------------------------------------
+// CMV projetado de fechamento (para onde vamos)
+//   planejado_restante_cat = Σ planejado ORIGINAL das semanas futuras
+//                            + max(0, planejado original da semana atual − comprado na semana atual)
+//   cmv_projetado          = (compras do mês + planejado restante) / projeção conservadora
+// O planejado original (não o redistribuído) faz as compras além do plano aparecerem.
+// -----------------------------------------------------------------------------
+
+export type CmvProjetadoCategoria = {
+  categoriaId: string;
+  compras: Centavos;
+  planejadoRestante: Centavos;
+  projetado: Centavos;
+  pct: number | null;
+  faixa: FaixaRegua | null;
+};
+
+export type CmvProjetado = {
+  compras: Centavos;
+  planejadoRestante: Centavos;
+  projetado: Centavos;
+  pct: number | null;
+  faixa: FaixaRegua | null;
+  /** teto total (meta × projeção) − compras do mês: "ainda pode comprar até…" (negativo = passou do teto) */
+  podeComprar: Centavos;
+  porCategoria: CmvProjetadoCategoria[];
+};
+
+export function planejadoRestante(semanas: Pick<SemanaOrcamento, "situacao" | "planejadoOriginal" | "comprado">[]): Centavos {
+  return soma(
+    semanas.map((s) =>
+      s.situacao === "futura" ? s.planejadoOriginal : s.situacao === "atual" ? naoNegativo(s.planejadoOriginal - s.comprado) : 0,
+    ),
+  );
+}
+
+export function calcularCmvProjetado(params: {
+  categorias: (Pick<OrcamentoCategoria, "categoriaId" | "compradoMes" | "semanas"> & { pctMeta: number })[];
+  projecao: Centavos;
+  metaCmvPct: number;
+  regua: FaixaRegua[];
+}): CmvProjetado {
+  const { projecao, metaCmvPct, regua } = params;
+  const pct = (v: Centavos) => (projecao > 0 ? v / projecao : null);
+  const porCategoria = params.categorias.map((c) => {
+    const restante = planejadoRestante(c.semanas);
+    const projetado = c.compradoMes + restante;
+    const p = pct(projetado);
+    return {
+      categoriaId: c.categoriaId,
+      compras: c.compradoMes,
+      planejadoRestante: restante,
+      projetado,
+      pct: p,
+      faixa: classificarRegua(p, reguaDaCategoria(regua, c.pctMeta, metaCmvPct)),
+    };
+  });
+  const compras = soma(porCategoria.map((c) => c.compras));
+  const restante = soma(porCategoria.map((c) => c.planejadoRestante));
+  const projetado = compras + restante;
+  const p = pct(projetado);
+  return {
+    compras,
+    planejadoRestante: restante,
+    projetado,
+    pct: p,
+    faixa: classificarRegua(p, regua),
+    podeComprar: Math.round(projecao * metaCmvPct) - compras,
+    porCategoria,
+  };
+}
+
+// -----------------------------------------------------------------------------
+// CMV por semana fechada (como fomos)
+//   Semana fechada = o último dia já passou e todos os dias dela têm venda registrada.
+//   CMV da semana = compras da semana (pela data da nota) / venda da semana.
+//   Acumulado = soma das semanas fechadas (compensa compras de sexta que abastecem
+//   o fim de semana e caem parte na semana seguinte).
+// -----------------------------------------------------------------------------
+
+export type SituacaoSemanaCmv = "fechada" | "em_andamento" | "aguardando_vendas" | "futura";
+
+export type CmvBloco = {
+  venda: Centavos;
+  compras: Centavos;
+  comprasPorCategoria: Record<string, Centavos>;
+  /** só em semana fechada (e no acumulado); null nos demais casos ou sem venda */
+  pct: number | null;
+  faixa: FaixaRegua | null;
+  pctPorCategoria: Record<string, number | null>;
+  faixaPorCategoria: Record<string, FaixaRegua | null>;
+};
+
+export type CmvSemana = Semana & CmvBloco & { situacao: SituacaoSemanaCmv };
+
+export type CmvSemanas = {
+  semanas: CmvSemana[];
+  /** null enquanto nenhuma semana estiver fechada */
+  acumulado: (CmvBloco & { semanas: NumeroSemana[] }) | null;
+};
+
+export function calcularCmvSemanas(params: {
+  config: Pick<ConfigMes, "competencia" | "metaCmvPct">;
+  categorias: Pick<Categoria, "id" | "pctMeta">[];
+  notas: NotaCalc[];
+  /** vendas que contam (sem o dia parcial de hoje) */
+  vendas: VendaDia[];
+  /** dias com venda registrada (completos) */
+  diasComVenda: DataCivil[];
+  hoje: DataCivil;
+  regua: FaixaRegua[];
+}): CmvSemanas {
+  const { config, categorias, hoje, regua } = params;
+  const notas = notasValidas(params.notas, config.competencia);
+  const vendas = params.vendas.filter((v) => mesmoMes(v.data, config.competencia));
+  const comVenda = new Set(params.diasComVenda);
+  const reguas = new Map(categorias.map((c) => [c.id, reguaDaCategoria(regua, c.pctMeta, config.metaCmvPct)]));
+
+  const bloco = (venda: Centavos, notasBloco: NotaCalc[], comPct: boolean): CmvBloco => {
+    const comprasPorCategoria: Record<string, Centavos> = Object.fromEntries(
+      categorias.map((c) => [c.id, soma(notasBloco.filter((n) => n.categoriaId === c.id).map((n) => n.valor))]),
+    );
+    const compras = soma(Object.values(comprasPorCategoria));
+    const pct = (v: Centavos) => (comPct && venda > 0 ? v / venda : null);
+    const pctPorCategoria: Record<string, number | null> = Object.fromEntries(categorias.map((c) => [c.id, pct(comprasPorCategoria[c.id])]));
+    return {
+      venda,
+      compras,
+      comprasPorCategoria,
+      pct: pct(compras),
+      faixa: classificarRegua(pct(compras), regua),
+      pctPorCategoria,
+      faixaPorCategoria: Object.fromEntries(categorias.map((c) => [c.id, classificarRegua(pctPorCategoria[c.id], reguas.get(c.id) ?? regua)])),
+    };
+  };
+
+  const dentro = (d: DataCivil, s: Semana) => d >= s.inicio && d <= s.fim;
+  const semanas: CmvSemana[] = semanasDoMes(config.competencia).map((s) => {
+    const dias = diasDoMes(config.competencia).filter((d) => dentro(d, s));
+    const situacao: SituacaoSemanaCmv =
+      s.inicio > hoje ? "futura" : s.fim >= hoje ? "em_andamento" : dias.every((d) => comVenda.has(d)) ? "fechada" : "aguardando_vendas";
+    const venda = soma(vendas.filter((v) => dentro(v.data, s)).map((v) => v.total));
+    return { ...s, situacao, ...bloco(venda, notas.filter((n) => dentro(n.data, s)), situacao === "fechada") };
+  });
+
+  const fechadas = semanas.filter((s) => s.situacao === "fechada");
+  const acumulado = fechadas.length
+    ? {
+        semanas: fechadas.map((s) => s.numero),
+        ...bloco(
+          soma(fechadas.map((s) => s.venda)),
+          notas.filter((n) => fechadas.some((s) => dentro(n.data, s))),
+          true,
+        ),
+      }
+    : null;
+  return { semanas, acumulado };
+}
+
+// -----------------------------------------------------------------------------
 // Painel: junta tudo para a tela principal
 // -----------------------------------------------------------------------------
 
@@ -477,7 +650,11 @@ export type ResultadoPainel = {
   categorias: (OrcamentoCategoria & { nome: string; pctMeta: number })[];
   tetoTotal: Centavos;
   compradoTotal: Centavos;
+  /** CMV parcial (compras ÷ venda até ontem): só informativo no painel */
   cmv: ResultadoCmv;
+  /** indicador principal do card de CMV */
+  cmvProjetado: CmvProjetado;
+  cmvSemanas: CmvSemanas;
 };
 
 export function calcularPainel(params: {
@@ -513,6 +690,16 @@ export function calcularPainel(params: {
     pctMeta: c.pctMeta,
   }));
   const compradoTotal = soma(categorias.map((c) => c.compradoMes));
+  const cmvProjetado = calcularCmvProjetado({ categorias, projecao: projecao.projecao, metaCmvPct: config.metaCmvPct, regua: params.regua });
+  const cmvSemanas = calcularCmvSemanas({
+    config,
+    categorias: params.categorias,
+    notas: params.notas,
+    vendas: vendasMes,
+    diasComVenda,
+    hoje,
+    regua: params.regua,
+  });
 
   return {
     hoje,
@@ -530,5 +717,7 @@ export function calcularPainel(params: {
       estoqueFinal: params.estoqueFinal,
       regua: params.regua,
     }),
+    cmvProjetado,
+    cmvSemanas,
   };
 }

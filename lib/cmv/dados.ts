@@ -93,7 +93,7 @@ export async function carregarPainel(
   hoje: DataCivil,
 ): Promise<{
   resultado: ResultadoPainel;
-  mes: { id: string | null; status: string; competencia: DataCivil; metaVenda: number };
+  mes: { id: string | null; status: string; competencia: DataCivil; metaVenda: number; metaCmvPct: number };
   ultimaSincronizacao: string | null;
   ultimaVendaManual: string | null;
   /** totais de hoje por turno, no banco (planilha completa ou lançamento manual) */
@@ -160,7 +160,7 @@ export async function carregarPainel(
 
   return {
     resultado,
-    mes: { id: mesQ.data?.id ?? null, status: mesQ.data?.status ?? "aberto", competencia: ini, metaVenda: config.metaVenda },
+    mes: { id: mesQ.data?.id ?? null, status: mesQ.data?.status ?? "aberto", competencia: ini, metaVenda: config.metaVenda, metaCmvPct: config.metaCmvPct },
     ultimaSincronizacao: maior([...(fechQ.data ?? []).map((f) => f.sincronizado_em), ...(vendasQ.data ?? []).map((v) => v.sincronizado_em)]),
     ultimaVendaManual: maior((vendasQ.data ?? []).filter((v) => v.fonte === "manual").map((v) => v.atualizado_em)),
     hojeNoBanco,
