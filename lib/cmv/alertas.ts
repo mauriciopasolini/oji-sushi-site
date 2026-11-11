@@ -163,6 +163,7 @@ export function gerarAlertas(params: {
       nivel: "info",
       titulo: `${fornecedoresNovos} fornecedor(es) novo(s) cadastrado(s) pelo gestor`,
       detalhe: "Revise nome e categoria, e complete prazo/CNPJ.",
+      href: "/painel/cmv/fornecedores?filtro=novos",
     });
   }
 

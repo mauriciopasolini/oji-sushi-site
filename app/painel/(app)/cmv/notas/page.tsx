@@ -4,7 +4,9 @@ import { fimDoMes, listarCategorias, listarFornecedores } from "@/lib/cmv/dados"
 import { competenciaDe, hojeSP, montar, partes, semanasDoMes } from "@/lib/cmv/datas";
 import { centavos, formatarBRL } from "@/lib/cmv/dinheiro";
 import { type Conferencia, type NotaRow, ROTULO_CONFERENCIA, ehPendenteNF } from "@/lib/cmv/tipos";
+import { getSessao } from "@/lib/cmv/sessao";
 import { createClient } from "@/lib/supabase/server";
+import { StatusConferencia } from "./status-conferencia";
 
 export const metadata: Metadata = { title: "Notas" };
 
@@ -38,12 +40,14 @@ export default async function NotasPage({ searchParams }: { searchParams: Promis
   if (f.conferencia && f.conferencia in ROTULO_CONFERENCIA) q = q.eq("conferencia", f.conferencia);
   if (status === "ativa" || status === "cancelada") q = q.eq("status", status);
 
-  const [{ data: notasRaw, error }, categorias, fornecedores, { count: pendentesNF }] = await Promise.all([
+  const [{ data: notasRaw, error }, categorias, fornecedores, { count: pendentesNF }, sessao] = await Promise.all([
     q,
     listarCategorias(supabase),
     listarFornecedores(supabase, { incluirInativos: true }),
     supabase.from("notas").select("id", { count: "exact", head: true }).eq("tipo", "sem_nota").eq("status", "ativa"),
+    getSessao(),
   ]);
+  const ehAdmin = sessao?.perfil?.papel === "admin";
   type Linha = NotaRow & { fornecedores: { nome: string; revisado_em: string | null } | null; categorias_cmv: { nome: string } | null };
   const notas = (notasRaw ?? []) as Linha[];
 
@@ -141,10 +145,10 @@ export default async function NotasPage({ searchParams }: { searchParams: Promis
 
       <ul className="divide-y divide-neutral-100 overflow-hidden rounded-2xl border border-neutral-200 bg-white">
         {notas.map((n) => (
-          <li key={n.id}>
+          <li key={n.id} className={`flex items-center gap-2 pr-3 ${ehPendenteNF(n) ? "border-l-4 border-amber-500 bg-amber-50" : ""}`}>
             <Link
               href={`/painel/cmv/notas/${n.id}`}
-              className={`flex items-center gap-3 px-3 py-3 ${ehPendenteNF(n) ? "border-l-4 border-amber-500 bg-amber-50 hover:bg-amber-100" : "hover:bg-neutral-50"}`}
+              className={`flex min-w-0 flex-1 items-center gap-3 py-3 pl-3 ${ehPendenteNF(n) ? "hover:bg-amber-100" : "hover:bg-neutral-50"}`}
             >
               <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-neutral-200 bg-neutral-100">
                 {urls.get(n.foto_path) ? (
@@ -172,9 +176,8 @@ export default async function NotasPage({ searchParams }: { searchParams: Promis
                 <p className={`font-semibold tabular-nums ${n.status === "cancelada" ? "text-neutral-400 line-through" : ""}`}>
                   {formatarBRL(centavos(n.valor))}
                 </p>
-                {ehPendenteNF(n) ? (
-                  <p className="text-xs font-semibold text-amber-800">⏳ Aguardando NF</p>
-                ) : (
+                {ehPendenteNF(n) && <p className="text-xs font-semibold text-amber-800">⏳ Aguardando NF</p>}
+                {!ehPendenteNF(n) && !(ehAdmin && n.status === "ativa") && (
                 <p
                   className={`text-xs ${
                     n.status === "cancelada"
@@ -191,6 +194,7 @@ export default async function NotasPage({ searchParams }: { searchParams: Promis
                 )}
               </div>
             </Link>
+            {ehAdmin && n.status === "ativa" && <StatusConferencia id={n.id} conferencia={n.conferencia} observacao={n.conferencia_obs} compacto />}
           </li>
         ))}
         {!notas.length && <li className="px-4 py-8 text-center text-neutral-500">Nenhuma nota com esses filtros.</li>}

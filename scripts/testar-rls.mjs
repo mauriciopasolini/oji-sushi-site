@@ -3,8 +3,11 @@
 // Tudo roda numa transação que é DESFEITA no fim: nada fica gravado.
 //
 //   npm run db:test-rls
+//   npm run db:test-rls -- --com-migracao supabase/migrations/<arquivo>.sql
+//     (aplica uma migração ainda pendente dentro da mesma transação desfeita: ensaio antes do db:migrate)
 
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import postgres from "postgres";
 
 if (!process.env.SUPABASE_DB_URL) {
@@ -63,6 +66,12 @@ async function naoDeve(tx, nome, fn, trecho) {
 
 try {
   await sql.begin(async (tx) => {
+    const iMig = process.argv.indexOf("--com-migracao");
+    if (iMig > 0) {
+      const arquivo = process.argv[iMig + 1];
+      await tx.unsafe(readFileSync(arquivo, "utf8"));
+      console.log(`(migração ${arquivo} aplicada só dentro desta transação)`);
+    }
     // ---------------------------------------------------------------- setup
     for (const [nome, id] of Object.entries(U)) {
       await tx`insert into auth.users (id, email, aud, role) values (${id}, ${`teste-${nome}-${id.slice(0, 8)}@exemplo.invalid`}, 'authenticated', 'authenticated')`;
@@ -262,6 +271,120 @@ try {
       const [z] = await sp`update public.notas set categoria_id = ${pescados}, motivo_edicao = 'corrigi a categoria' where id = ${x.id} returning categoria_fora_do_padrao`;
       return [x.categoria_fora_do_padrao, y.categoria_fora_do_padrao, z.categoria_fora_do_padrao];
     }, (r) => r[0] === true && r[1] === true && r[2] === false);
+
+    console.log("\nConferência (Etapa 6)");
+    await deve(tx, "admin confere nota → conferida_por/em preenchidos; editar a nota volta para pendente", async (sp) => {
+      await comoUsuario(sp, U.gestor);
+      const [x] = await novaNota(sp, { data_emissao: "2026-12-04", foto_path: "2026/12/c1.jpg" });
+      await comoUsuario(sp, U.admin);
+      const [a] = await sp`update public.notas set conferencia = 'conferida' where id = ${x.id} returning conferencia, conferida_por, conferida_em`;
+      await comoUsuario(sp, U.gestor);
+      const [b] = await sp`update public.notas set valor = 101, motivo_edicao = 'valor corrigido' where id = ${x.id} returning conferencia, conferida_por`;
+      return [a, b];
+    }, ([a, b]) => a.conferencia === "conferida" && a.conferida_por === U.admin && a.conferida_em !== null && b.conferencia === "pendente" && b.conferida_por === null);
+    await naoDeve(tx, "divergente sem observação é recusado", async (sp) => {
+      await comoUsuario(sp, U.gestor);
+      const [x] = await novaNota(sp, { data_emissao: "2026-12-04", foto_path: "2026/12/c2.jpg" });
+      await comoUsuario(sp, U.admin);
+      await sp`update public.notas set conferencia = 'divergente', conferencia_obs = '  ' where id = ${x.id}`;
+    }, "notas_divergente_com_obs");
+
+    console.log("\nMescla de fornecedores (Etapa 6)");
+    const [{ id: mercadoCat }] = await tx`select id from public.categorias_cmv where slug = 'mercado'`;
+    const [fA] = await tx`insert into public.fornecedores (nome, categoria_padrao_id) values ('Teste Mescla Principal', ${mercadoCat}) returning id`;
+    const [fB] = await tx`insert into public.fornecedores (nome, categoria_padrao_id, revisado_em) values ('Teste Mescla Duplicado', ${mercadoCat}, null) returning id`;
+    await tx`update public.fornecedores set revisado_em = null, revisado_por = null where id = ${fB.id}`;
+    await naoDeve(tx, "gestor NÃO mescla fornecedores", async (sp) => { await comoUsuario(sp, U.gestor); await sp`select public.mesclar_fornecedores(${fA.id}, ${fB.id})`; }, "administrador");
+    await naoDeve(tx, "admin NÃO mescla um fornecedor com ele mesmo", async (sp) => { await comoUsuario(sp, U.admin); await sp`select public.mesclar_fornecedores(${fA.id}, ${fA.id})`; }, "diferentes");
+    await deve(tx, "admin mescla: notas de mês aberto passam (conferência mantida), as de mês fechado ficam; duplicado desativado e auditado", async (sp) => {
+      await comoUsuario(sp, U.gestor);
+      const [nNov] = await novaNota(sp, { data_emissao: "2026-11-03", foto_path: "2026/11/m1.jpg", fornecedor_id: fB.id, categoria_id: mercadoCat });
+      const [nDez] = await novaNota(sp, { data_emissao: "2026-12-05", foto_path: "2026/12/m2.jpg", fornecedor_id: fB.id, categoria_id: mercadoCat });
+      await comoUsuario(sp, U.admin);
+      await sp`update public.notas set conferencia = 'conferida' where id = ${nDez.id}`;
+      await sp`reset role`;
+      // fecha novembro só aqui dentro (direto, sem as checagens de fechar_mes)
+      await sp`select set_config('cmv.permitir_status', 'on', true)`;
+      await sp`update public.meses set status = 'fechado', fechado_em = now() where id = ${nov}`;
+      await sp`select set_config('cmv.permitir_status', 'off', true)`;
+      await comoUsuario(sp, U.admin);
+      const [{ mesclar_fornecedores: res }] = await sp`select public.mesclar_fornecedores(${fA.id}, ${fB.id})`;
+      await sp`reset role`;
+      const notas = await sp`select id, fornecedor_id, conferencia from public.notas where id in (${nNov.id}, ${nDez.id})`;
+      const [f] = await sp`select ativo, mesclado_em_id, revisado_em from public.fornecedores where id = ${fB.id}`;
+      const [aud] = await sp`select count(*)::int n from public.auditoria where tabela = 'fornecedores' and registro_id = ${fB.id} and acao = 'merge'`;
+      const [audNota] = await sp`select motivo from public.auditoria where tabela = 'notas' and registro_id = ${nDez.id} order by id desc limit 1`;
+      await sp`select set_config('cmv.permitir_status', 'on', true)`;
+      await sp`update public.meses set status = 'aberto', fechado_por = null, fechado_em = null where id = ${nov}`;
+      await sp`select set_config('cmv.permitir_status', 'off', true)`;
+      return { res, nNov: notas.find((x) => x.id === nNov.id), nDez: notas.find((x) => x.id === nDez.id), f, aud: aud.n, motivo: audNota.motivo };
+    }, (r) => r.res.notas_movidas === 1 && r.res.notas_em_mes_fechado === 1
+              && r.nDez.fornecedor_id === fA.id && r.nDez.conferencia === "conferida"
+              && r.nNov.fornecedor_id === fB.id
+              && r.f.ativo === false && r.f.mesclado_em_id === fA.id && r.f.revisado_em !== null
+              && r.aud === 1 && r.motivo?.startsWith("Mescla de fornecedores"));
+    await naoDeve(tx, "fornecedor já mesclado NÃO é mesclado de novo", async (sp) => { await comoUsuario(sp, U.admin); await sp`select public.mesclar_fornecedores(${fA.id}, ${fB.id})`; }, "já foi mesclado");
+    await naoDeve(tx, "fornecedor mesclado NÃO pode ser reativado", async (sp) => { await comoUsuario(sp, U.admin); await sp`update public.fornecedores set ativo = true where id = ${fB.id}`; }, "fornecedores_mescla_coerente");
+    await deve(tx, "admin marca fornecedor como revisado", async (sp) => {
+      await comoUsuario(sp, U.admin);
+      const [x] = await sp`insert into public.fornecedores (nome, categoria_padrao_id) values ('Teste Revisar', ${mercadoCat}) returning id`;
+      await sp`reset role`;
+      await sp`update public.fornecedores set revisado_em = null, revisado_por = null where id = ${x.id}`;
+      await comoUsuario(sp, U.admin);
+      return sp`update public.fornecedores set revisado_em = now(), revisado_por = ${U.admin} where id = ${x.id} returning revisado_em`;
+    }, (r) => r.length === 1 && r[0].revisado_em !== null);
+
+    console.log("\nContagem de estoque (Etapa 6)");
+    const [{ id: dez }] = await tx`select id from public.meses where competencia = '2026-12-01'`;
+    await naoDeve(tx, "gestor NÃO cadastra item de contagem", async (sp) => { await comoUsuario(sp, U.gestor); await sp`insert into public.itens_contagem (nome, unidade, categoria_id) values ('Salmão', 'kg', ${pescados})`; }, "row-level security");
+    await comoUsuario(tx, U.admin);
+    const [it1] = await tx`insert into public.itens_contagem (nome, unidade, categoria_id, custo_unitario_ref) values ('  Teste   Salmão ', 'kg', ${pescados}, 89.90) returning id, nome`;
+    const [it2] = await tx`insert into public.itens_contagem (nome, unidade, categoria_id) values ('Teste Arroz', 'pct', ${pescados}) returning id`;
+    await tx`reset role`;
+    registrar(it1.nome === "Teste Salmão", "admin cadastra item de contagem (nome normalizado)");
+    await naoDeve(tx, "item com nome repetido (caixa/espaços) é recusado", async (sp) => { await comoUsuario(sp, U.admin); await sp`insert into public.itens_contagem (nome, unidade, categoria_id) values ('teste salmão', 'kg', ${pescados})`; }, "duplicate key");
+    await naoDeve(tx, "contagem com data futura é recusada", async (sp) => { await comoUsuario(sp, U.gestor); await sp`insert into public.contagens (mes_id, data) values (${dez}, '2099-01-01')`; }, "futuro");
+    await comoUsuario(tx, U.gestor);
+    const [cont] = await tx`insert into public.contagens (mes_id, data, status) values (${dez}, current_date - 1, 'finalizada') returning id, status, realizada_por`;
+    await tx`reset role`;
+    registrar(cont.status === "rascunho" && cont.realizada_por === U.gestor, "gestor cria contagem → sempre nasce rascunho");
+    await naoDeve(tx, "segunda contagem de fechamento no mesmo mês é recusada", async (sp) => { await comoUsuario(sp, U.gestor); await sp`insert into public.contagens (mes_id, data) values (${dez}, current_date - 1)`; }, "duplicate key");
+    await naoDeve(tx, "contagem sem itens NÃO é finalizada", async (sp) => { await comoUsuario(sp, U.gestor); await sp`update public.contagens set status = 'finalizada' where id = ${cont.id}`; }, "nenhum item");
+    await deve(tx, "gestor lança itens e finaliza → valor = qtd × custo; auditoria 'finalize' com o total", async (sp) => {
+      await comoUsuario(sp, U.gestor);
+      await sp`insert into public.contagem_itens (contagem_id, item_id, quantidade, custo_unitario) values (${cont.id}, ${it1.id}, 12.345, 89.90), (${cont.id}, ${it2.id}, 3, 25)`;
+      await sp`update public.contagem_itens set quantidade = 12.5 where contagem_id = ${cont.id} and item_id = ${it1.id}`;
+      const [c] = await sp`update public.contagens set status = 'finalizada' where id = ${cont.id} returning status, finalizada_por, finalizada_em`;
+      await sp`reset role`;
+      const itens = await sp`select valor from public.contagem_itens where contagem_id = ${cont.id} order by valor desc`;
+      const [a] = await sp`select depois->>'total' total from public.auditoria where tabela = 'contagens' and registro_id = ${cont.id} and acao = 'finalize'`;
+      return { c, valores: itens.map((i) => i.valor), total: a?.total };
+    }, (r) => r.c.status === "finalizada" && r.c.finalizada_por === U.gestor && r.valores[0] === "1123.75" && r.valores[1] === "75.00" && Number(r.total) === 1198.75);
+    await naoDeve(tx, "item de contagem finalizada NÃO pode ser alterado", async (sp) => { await comoUsuario(sp, U.admin); await sp`update public.contagem_itens set quantidade = 1 where contagem_id = ${cont.id}`; }, "finalizada");
+    await naoDeve(tx, "item NÃO pode ser incluído em contagem finalizada", async (sp) => {
+      await comoUsuario(sp, U.admin);
+      const [it3] = await sp`insert into public.itens_contagem (nome, unidade, categoria_id) values ('Teste Nori', 'pct', ${pescados}) returning id`;
+      await sp`insert into public.contagem_itens (contagem_id, item_id, quantidade, custo_unitario) values (${cont.id}, ${it3.id}, 1, 1)`;
+    }, "finalizada");
+    await naoDeve(tx, "contagem finalizada NÃO volta a rascunho por UPDATE direto (nem admin)", async (sp) => { await comoUsuario(sp, U.admin); await sp`update public.contagens set status = 'rascunho' where id = ${cont.id}`; }, "finalizada");
+    await naoDeve(tx, "admin NÃO apaga contagem finalizada", async (sp) => { await comoUsuario(sp, U.admin); await sp`delete from public.contagens where id = ${cont.id}`; }, "não pode ser apagada");
+    await naoDeve(tx, "gestor NÃO reabre contagem", async (sp) => { await comoUsuario(sp, U.gestor); await sp`select public.reabrir_contagem(${cont.id}, 'errei')`; }, "administrador");
+    await naoDeve(tx, "admin NÃO reabre contagem sem motivo", async (sp) => { await comoUsuario(sp, U.admin); await sp`select public.reabrir_contagem(${cont.id}, ' ')`; }, "motivo");
+    await deve(tx, "admin reabre contagem com motivo → rascunho e auditoria 'reopen'", async (sp) => {
+      await comoUsuario(sp, U.admin);
+      await sp`select public.reabrir_contagem(${cont.id}, 'faltou o freezer 2')`;
+      await sp`reset role`;
+      const [c] = await sp`select status, finalizada_em from public.contagens where id = ${cont.id}`;
+      const [a] = await sp`select motivo from public.auditoria where tabela = 'contagens' and registro_id = ${cont.id} and acao = 'reopen'`;
+      return { ...c, motivo: a?.motivo };
+    }, (r) => r.status === "rascunho" && r.finalizada_em === null && r.motivo === "faltou o freezer 2");
+    await naoDeve(tx, "contagem de mês fechado NÃO aceita itens", async (sp) => {
+      await sp`select set_config('cmv.permitir_status', 'on', true)`;
+      await sp`update public.meses set status = 'fechado', fechado_em = now() where id = ${dez}`;
+      await sp`select set_config('cmv.permitir_status', 'off', true)`;
+      await comoUsuario(sp, U.admin);
+      await sp`update public.contagem_itens set quantidade = 2 where contagem_id = ${cont.id}`;
+    }, "está fechado");
 
     console.log("\nSincronização e conflitos");
     const [conf] = await tx`insert into public.conflitos_venda (data, turno, origem, valores_manual, valores_planilha, total_manual, total_planilha, assinatura_planilha)

@@ -72,7 +72,7 @@ describe("Alertas do painel", () => {
 
   it("fornecedores novos só aparecem para o admin", () => {
     const p = painel(vendasAte(9));
-    expect(gerarAlertas({ painel: p, ehAdmin: true, fornecedoresNovos: 2 }).some((x) => x.id === "fornecedores-novos")).toBe(true);
+    expect(gerarAlertas({ painel: p, ehAdmin: true, fornecedoresNovos: 2 }).find((x) => x.id === "fornecedores-novos")?.href).toBe("/painel/cmv/fornecedores?filtro=novos");
     expect(gerarAlertas({ painel: p, ehAdmin: false, fornecedoresNovos: 2 }).some((x) => x.id === "fornecedores-novos")).toBe(false);
   });
 

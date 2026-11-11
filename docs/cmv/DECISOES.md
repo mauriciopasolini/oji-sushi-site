@@ -205,3 +205,65 @@ As compras são concentradas na segunda (para seg–qui) e na sexta (para sex–
     - Semáforo: verde ≤ 0; amarelo até +10% ("Acima do ritmo (até 10%)"); vermelho acima disso ("Acima do ritmo").
     - O alerta "compras acima do ritmo" aparece sempre que o desvio passa de zero (antes só no vermelho), com o texto "o planejado até o fim desta semana é R$ X". O alerta de semana estourada continua tendo prioridade.
     - Cenário de 10/11 (Pescados, projeção 100.517,64): S1 6.868,73 e S2 5.171,46 dão CMV projetado de 26,28% (Ótimo) e nenhum alerta de ritmo; o CMV da S1 é 26,81%. Os dois valores estão nos testes.
+
+## 2026-11-10 — Etapa 6: conferência, fornecedores e contagem de estoque
+
+92. **Conferência** (`/painel/cmv/conferencia`, só admin; item "Conferência" no menu).
+    - Navega nota a nota pelas notas **ativas** do mês, em ordem de data e de lançamento. Filtros: pendentes (padrão), conferidas, divergentes e todas; também por categoria e fornecedor.
+    - Depois de marcar, avança sozinha. Se a nota sai do filtro (ex.: conferida em "pendentes"), vai para a seguinte; se era a última, para a anterior. "Voltar para pendente" fica na mesma nota.
+    - Atalhos no desktop: **C** conferida, **D** divergente (abre a observação; Enter confirma, Esc cancela), **← →** anterior/próxima. Não disparam com o foco num campo.
+    - Divergente exige observação (CHECK que já existia, mais validação na action). A conferência continua só do admin e bloqueada em mês fechado (triggers da Etapa 1).
+    - Progresso "23 de 36 conferidas", com divergentes e pendentes ao lado. **Divergente conta como revisada, mas não como conferida**; a barra mostra as duas cores.
+    - Na lista de notas e na página da nota, o status vira um menu para o admin: Conferida, Divergente (com observação) e Voltar para pendente. O gestor continua vendo só o texto.
+93. **Destaques de cada nota** (`lib/cmv/conferencia.ts`, funções puras com testes), do mais grave para o menos grave:
+    - **possível duplicidade**: a regra da decisão 85 (mesmo fornecedor, valor até 5%, até 15 dias), com link para a outra nota. Vale o pedido do Mauricio na Etapa 6, não os "3 dias" do briefing. A busca inclui as notas dos 15 dias antes e depois do mês;
+    - **sem nota (aguardando)**, com a observação ou a justificativa do fechamento;
+    - **fornecedor novo**, com link para Fornecedores;
+    - **categoria trocada** (`categoria_fora_do_padrao`);
+    - **caixa relacionado**: só para notas de Mercado e só com o caixa do dia sincronizado. Compara a despesa "Mercado" do caixa com a soma das notas de Mercado do dia:
+      - diferença até R$ 1,00 ou até 5%, o que for maior (`TOLERANCIA_CAIXA`): "Confere com o caixa" (verde);
+      - caixa maior que as notas: "possível cupom não lançado";
+      - notas maiores que o caixa: "parte paga fora do caixa ou lançada na data errada";
+      - nota paga "no caixa" num dia com despesa de Mercado zerada: também gera aviso.
+
+    Os dias com despesa de Mercado e **nenhuma** nota de Mercado não têm nota em que aparecer. Eles ficam numa lista no topo da tela.
+94. **Visor da foto, sem biblioteca** (`conferencia/visor-foto.tsx`).
+    - Roda do mouse: zoom no ponto do cursor.
+    - Pinça e arrasto: Pointer Events, com `touch-action: none` só dentro do quadro.
+    - Duplo clique ou toque: aproxima ou volta. Botões − / % / + / Abrir.
+    - Zoom de 1× a 8×, sem deixar a imagem sair do quadro.
+    - PDF aparece num `iframe`, com link para abrir em outra aba.
+95. **Fornecedores** (`/painel/cmv/fornecedores`, só admin; item no menu).
+    - Lista com nome, categoria padrão, prazo, CNPJ, nº de notas no mês escolhido e selo "novo". Os novos vêm primeiro. Filtros: ativos, novos, inativos e todos. O admin também cadastra fornecedor por aqui, e o cadastro já nasce revisado.
+    - Editar nome, categoria padrão, prazo (0 a 365 dias) e CNPJ (14 dígitos; a máscara é removida). Mudar a categoria padrão **não** altera as notas já lançadas (decisão 41).
+    - **Marcar como revisado** preenche `revisado_em` e `revisado_por`: o selo some e o fornecedor sai do alerta do painel. O alerta "X fornecedor(es) novo(s)" agora leva para `Fornecedores?filtro=novos`.
+    - Desativar/reativar: o fornecedor inativo some do lançamento de notas, mas as notas dele continuam.
+96. **Mesclar fornecedores**: RPC `mesclar_fornecedores(p_manter, p_remover)`, só admin, numa transação. Combina o pedido do Mauricio ("as notas do outro passam para ele") com a decisão 29 (mês fechado é imutável).
+    - **Notas de meses abertos:** passam para o fornecedor que fica, com o motivo "Mescla de fornecedores: X → Y" na auditoria de cada nota.
+      - A troca **não** devolve a nota para "pendente". O trigger `tg_notas_antes` respeita a flag de sessão `cmv.mescla_fornecedor`, que só é ligada dentro da RPC.
+      - O destaque "categoria trocada" é recalculado contra a categoria padrão do fornecedor que fica.
+    - **Notas de meses fechados:** continuam no duplicado. Ele fica desativado, com `mesclado_em_id` apontando para o fornecedor que fica e `mesclado_em` com a data da mescla. Um CHECK impede reativar um fornecedor mesclado.
+    - **Auditoria:** registro `merge` com os dois cadastros de antes, o nº de notas movidas e o nº de notas que ficaram em mês fechado.
+    - **Na tela:** o admin escolhe o outro fornecedor e **qual fica**, e confirma em dois passos.
+97. **Contagem de estoque** (`/painel/cmv/contagem`, gestor e admin; item "Contagem" no menu).
+    - **Rascunho e finalizada.** `contagens.status` vai de `rascunho` para `finalizada` (com `finalizada_por/em`). Continua uma contagem de fechamento por mês (unique que já existia). Regras no banco:
+      - toda contagem nasce rascunho e a data não pode ser futura;
+      - não finaliza sem itens;
+      - finalizada não muda, nem os itens dela, para ninguém, e não pode ser apagada;
+      - só volta a rascunho por `reabrir_contagem(id, motivo)` (admin, motivo obrigatório);
+      - auditoria: `insert`, `finalize` (com o total), `reopen` (com o motivo) e `delete`;
+      - o mês fechado continua bloqueando tudo (triggers da Etapa 1).
+    - **Tela para o celular.**
+      - Um cartão por item: quantidade com teclado decimal, unidade, × custo unitário e valor.
+      - Agrupado por categoria, com filtro por categoria, "só os que faltam" e busca. Enter leva ao próximo item.
+      - Barra fixa embaixo: total ao vivo, "n de m itens contados", estado do salvamento, "Salvar rascunho" e "Finalizar".
+    - **Rascunho salvo sozinho** 2,5 s depois da última digitação, com aviso ao sair se houver alteração não salva. Item com quantidade em branco fica fora da contagem. Ao finalizar, a tela avisa, e os itens em branco são gravados como **0**.
+    - **Custo pré-preenchido** com o último custo usado para o item numa contagem finalizada; sem histórico, com o custo de referência do cadastro. Para finalizar, todo item com quantidade maior que zero precisa de custo.
+    - **Quantidade em milésimos inteiros** (`numeric(12,3)`): aceita "12,5", "0,250" e "1.5" (ponto do teclado). O valor na tela usa o mesmo arredondamento da coluna gerada, `round(q × c, 2)` (`lib/cmv/contagem.ts`, com testes).
+    - **Mês da contagem.** Só pode ser iniciada no mês atual ou no anterior, porque a de novembro pode ser feita em 01/12. Uma faixa avisa quando a contagem do mês anterior ainda não foi finalizada (se esse mês existir no sistema e estiver aberto).
+    - **Cadastro de itens** (`/painel/cmv/contagem/itens`, admin): nome (único, sem diferenciar maiúsculas e espaços), unidade (kg/un/cx/pct/l), categoria, custo de referência e ordem; editar e desativar. As alterações nos itens vão para a auditoria.
+98. **Estoque no CMV.** `carregarPainel` passa ao motor o **estoque inicial** (contagem finalizada do mês anterior) e o **estoque final** (a do mês). O CMV real (`estoque inicial + compras − estoque final`) só existe com as duas. Novembro não tem contagem de outubro, então o primeiro CMV real será o de **dezembro** (contagens de 30/11 e 31/12). Novembro fecha com o CMV de compras.
+99. **Migração 0009 aplicada no banco compartilhado antes do merge.**
+    - É só aditiva, e a produção atual não usa nada dela. O trigger de notas é o mesmo, só com a flag da mescla a mais.
+    - Antes de aplicar, foi ensaiada com `npm run db:test-rls -- --com-migracao <arquivo>`. A opção é nova e aplica a migração dentro da transação desfeita do teste.
+    - Agora são 86 testes de banco, 24 deles novos (conferência, mescla e contagem).

@@ -102,7 +102,9 @@ export async function carregarPainel(
   const ini = competenciaDe(competencia);
   const fim = fimDoMes(ini);
 
-  const [mesQ, pesosQ, categorias, reguaQ, notasQ, vendasQ, fechQ] = await Promise.all([
+  const { ano, mes: m } = partes(ini);
+  const anterior = montar(m === 1 ? ano - 1 : ano, m === 1 ? 12 : m - 1, 1);
+  const [mesQ, pesosQ, categorias, reguaQ, notasQ, vendasQ, fechQ, estoqueQ] = await Promise.all([
     supabase.from("meses").select("*").eq("competencia", ini).maybeSingle(),
     supabase.from("pesos_dia_semana").select("dia_semana, peso").order("dia_semana"),
     listarCategorias(supabase),
@@ -110,8 +112,19 @@ export async function carregarPainel(
     supabase.from("notas").select("categoria_id, data_emissao, valor, status").eq("status", "ativa").gte("data_emissao", ini).lte("data_emissao", fim),
     supabase.from("vendas_turno").select("data, turno, total_calculado, fonte, sincronizado_em, atualizado_em").gte("data", ini).lte("data", fim),
     supabase.from("fechamento_turno").select("data, sincronizado_em").gte("data", ini).lte("data", fim),
+    // Contagens de fechamento finalizadas: a do mês anterior é o estoque inicial; a deste mês, o final.
+    supabase
+      .from("contagens")
+      .select("meses!inner(competencia), contagem_itens(valor)")
+      .eq("status", "finalizada")
+      .in("meses.competencia", [anterior, ini]),
   ]);
-  for (const q of [mesQ, pesosQ, reguaQ, notasQ, vendasQ, fechQ]) if (q.error) throw new Error(q.error.message);
+  for (const q of [mesQ, pesosQ, reguaQ, notasQ, vendasQ, fechQ, estoqueQ]) if (q.error) throw new Error(q.error.message);
+  const estoques = (estoqueQ.data ?? []) as unknown as { meses: { competencia: string }; contagem_itens: { valor: number }[] }[];
+  const estoqueDe = (comp: string) => {
+    const c = estoques.find((e) => e.meses.competencia === comp);
+    return c ? c.contagem_itens.reduce((a, i) => a + centavos(i.valor), 0) : null;
+  };
 
   const mes = mesQ.data ?? PADRAO_MES;
   const pesosDiaSemana = Array<number>(7).fill(0);
@@ -154,6 +167,8 @@ export async function carregarPainel(
     hojeCompleto: hojeNoBanco.completo,
     regua,
     vendaBaseErp: mesQ.data?.venda_base_erp != null ? centavos(mesQ.data.venda_base_erp) : null,
+    estoqueInicial: estoqueDe(anterior),
+    estoqueFinal: estoqueDe(ini),
   });
 
   const maior = (xs: (string | null | undefined)[]) => xs.filter(Boolean).sort().at(-1) ?? null;
