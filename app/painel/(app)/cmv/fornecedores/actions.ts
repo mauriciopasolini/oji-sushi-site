@@ -1,12 +1,21 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { getSessao } from "@/lib/cmv/sessao";
-import { RE_UUID } from "@/lib/cmv/tipos";
+import { TIPOS_DOCUMENTO } from "@/lib/cmv/padroes-fornecedor";
+import { FORMAS_PAGAMENTO, RE_UUID } from "@/lib/cmv/tipos";
 import { createClient } from "@/lib/supabase/server";
 
 export type Resultado<T = undefined> = { ok: true; dados: T } | { ok: false; erro: string };
 
-export type DadosFornecedor = { nome: string; categoria_padrao_id: string; prazo_vencimento_dias: string; cnpj: string };
+export type DadosFornecedor = {
+  nome: string;
+  categoria_padrao_id: string;
+  prazo_vencimento_dias: string;
+  cnpj: string;
+  /** "" = sem padrão */
+  tipo_padrao: string;
+  forma_pagamento_padrao: string;
+};
 
 function mensagem(msg: string) {
   if (/fornecedores_nome_normalizado_uk|fornecedores_nome_key/.test(msg)) return "Já existe um fornecedor com esse nome.";
@@ -38,7 +47,11 @@ function validar(d: DadosFornecedor) {
   }
   const cnpj = (d.cnpj ?? "").replace(/\D/g, "");
   if (cnpj && cnpj.length !== 14) return "CNPJ inválido: informe os 14 dígitos.";
-  return { nome, categoria_padrao_id: d.categoria_padrao_id, prazo_vencimento_dias: prazo, cnpj: cnpj || null };
+  const tipo = d.tipo_padrao || null;
+  if (tipo && !TIPOS_DOCUMENTO.some((t) => t.valor === tipo)) return "Tipo de documento padrão inválido.";
+  const forma = d.forma_pagamento_padrao || null;
+  if (forma && !FORMAS_PAGAMENTO.some((f) => f.valor === forma)) return "Forma de pagamento padrão inválida.";
+  return { nome, categoria_padrao_id: d.categoria_padrao_id, prazo_vencimento_dias: prazo, cnpj: cnpj || null, tipo_padrao: tipo, forma_pagamento_padrao: forma };
 }
 
 export async function salvarFornecedor(id: string | null, d: DadosFornecedor): Promise<Resultado<{ id: string }>> {

@@ -83,6 +83,19 @@ export function totalDaContagem(linhas: LinhaContagem[]): { total: Centavos; pre
 }
 
 /**
+ * Estoque do mês para o cálculo do CMV: total da contagem de fechamento FINALIZADA da
+ * competência. Rascunho não conta (devolve null, como se não houvesse contagem).
+ */
+export function estoqueDoMes(
+  contagens: { competencia: string; status: "rascunho" | "finalizada"; valores: (string | number)[] }[],
+  competencia: string,
+  paraCentavos: (v: string | number) => Centavos,
+): Centavos | null {
+  const c = contagens.find((x) => x.competencia === competencia && x.status === "finalizada");
+  return c ? c.valores.reduce<number>((a, v) => a + paraCentavos(v), 0) : null;
+}
+
+/**
  * Custo pré-preenchido: o último custo usado para o item numa contagem (da mais recente
  * para a mais antiga); sem histórico, o custo de referência do cadastro.
  */

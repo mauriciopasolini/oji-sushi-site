@@ -334,6 +334,64 @@ try {
       return sp`update public.fornecedores set revisado_em = now(), revisado_por = ${U.admin} where id = ${x.id} returning revisado_em`;
     }, (r) => r.length === 1 && r[0].revisado_em !== null);
 
+    console.log("\nPadrões por fornecedor e ajuste na conferência");
+    await deve(tx, "seeds: Frumar NF-e/boleto, FEMSA NF-e, Fruteira comanda, Mercado cupom", () => tx`
+      select nome, tipo_padrao, forma_pagamento_padrao from public.fornecedores where nome in ('Frumar', 'FEMSA', 'Fruteira', 'Mercado')`,
+      (r) => {
+        const m = Object.fromEntries(r.map((x) => [x.nome, `${x.tipo_padrao}/${x.forma_pagamento_padrao}`]));
+        return m.Frumar === "nfe/boleto" && m.FEMSA === "nfe/null" && m.Fruteira === "comanda/null" && m.Mercado === "cupom/null";
+      });
+    await deve(tx, "gestor cria fornecedor: padrões de tipo e pagamento ficam vazios (o admin define)", async (sp) => {
+      await comoUsuario(sp, U.gestor);
+      return sp`insert into public.fornecedores (nome, categoria_padrao_id, tipo_padrao, forma_pagamento_padrao) values ('Teste Padrão Gestor', ${pescados}, 'cupom', 'pix') returning tipo_padrao, forma_pagamento_padrao`;
+    }, (r) => r[0].tipo_padrao === null && r[0].forma_pagamento_padrao === null);
+    await deve(tx, "admin define os padrões do fornecedor", async (sp) => {
+      await comoUsuario(sp, U.admin);
+      return sp`insert into public.fornecedores (nome, categoria_padrao_id, tipo_padrao, forma_pagamento_padrao) values ('Teste Padrão Admin', ${pescados}, 'cupom', 'pix') returning tipo_padrao, forma_pagamento_padrao`;
+    }, (r) => r[0].tipo_padrao === "cupom" && r[0].forma_pagamento_padrao === "pix");
+    await naoDeve(tx, "tipo padrão 'sem_nota' é recusado", async (sp) => { await comoUsuario(sp, U.admin); await sp`update public.fornecedores set tipo_padrao = 'sem_nota' where id = ${frumar}`; }, "check constraint");
+    await naoDeve(tx, "gestor NÃO usa o ajuste na conferência", async (sp) => {
+      await comoUsuario(sp, U.gestor);
+      const [x] = await novaNota(sp, { data_emissao: "2026-12-06", foto_path: "2026/12/aj0.jpg" });
+      await sp`select public.ajustar_nota_conferencia(${x.id}, 'cupom', 'pix')`;
+    }, "administrador");
+    await deve(tx, "admin ajusta tipo e pagamento na conferência → nota conferida continua conferida; auditoria com motivo 'ajuste na conferência'", async (sp) => {
+      await comoUsuario(sp, U.gestor);
+      const [x] = await novaNota(sp, { data_emissao: "2026-12-06", foto_path: "2026/12/aj1.jpg", forma_pagamento: "caixa" });
+      await comoUsuario(sp, U.admin);
+      await sp`update public.notas set conferencia = 'conferida' where id = ${x.id}`;
+      await sp`select public.ajustar_nota_conferencia(${x.id}, 'cupom', 'pix')`;
+      await sp`reset role`;
+      const [n] = await sp`select tipo, forma_pagamento, conferencia, conferida_por from public.notas where id = ${x.id}`;
+      const [a] = await sp`select motivo, antes->>'tipo' tipo_antes, usuario_id from public.auditoria where tabela = 'notas' and registro_id = ${x.id} order by id desc limit 1`;
+      return { ...n, ...a };
+    }, (r) => r.tipo === "cupom" && r.forma_pagamento === "pix" && r.conferencia === "conferida" && r.conferida_por === U.admin
+              && r.motivo === "ajuste na conferência" && r.tipo_antes === "nfe" && r.usuario_id === U.admin);
+    await deve(tx, "edição normal (gestor) continua devolvendo a nota conferida para pendente", async (sp) => {
+      await comoUsuario(sp, U.gestor);
+      const [x] = await novaNota(sp, { data_emissao: "2026-12-06", foto_path: "2026/12/aj2.jpg" });
+      await comoUsuario(sp, U.admin);
+      await sp`update public.notas set conferencia = 'conferida' where id = ${x.id}`;
+      await comoUsuario(sp, U.gestor);
+      return sp`update public.notas set tipo = 'cupom', motivo_edicao = 'corrigi' where id = ${x.id} returning conferencia`;
+    }, (r) => r[0].conferencia === "pendente");
+    await naoDeve(tx, "ajuste na conferência NÃO tira uma compra de 'sem nota'", async (sp) => {
+      await comoUsuario(sp, U.gestor);
+      const [x] = await novaNota(sp, { data_emissao: "2026-12-06", foto_path: "2026/12/aj3.jpg", tipo: "sem_nota", observacao: "romaneio" });
+      await comoUsuario(sp, U.admin);
+      await sp`select public.ajustar_nota_conferencia(${x.id}, 'nfe', 'boleto')`;
+    }, "sem nota fiscal");
+    await naoDeve(tx, "ajuste na conferência NÃO altera nota de mês fechado", async (sp) => {
+      await comoUsuario(sp, U.gestor);
+      const [x] = await novaNota(sp, { data_emissao: "2026-12-06", foto_path: "2026/12/aj4.jpg" });
+      await sp`reset role`;
+      await sp`select set_config('cmv.permitir_status', 'on', true)`;
+      await sp`update public.meses set status = 'fechado', fechado_em = now() where competencia = '2026-12-01'`;
+      await sp`select set_config('cmv.permitir_status', 'off', true)`;
+      await comoUsuario(sp, U.admin);
+      await sp`select public.ajustar_nota_conferencia(${x.id}, 'cupom', 'boleto')`;
+    }, "está fechado");
+
     console.log("\nContagem de estoque (Etapa 6)");
     const [{ id: dez }] = await tx`select id from public.meses where competencia = '2026-12-01'`;
     await naoDeve(tx, "gestor NÃO cadastra item de contagem", async (sp) => { await comoUsuario(sp, U.gestor); await sp`insert into public.itens_contagem (nome, unidade, categoria_id) values ('Salmão', 'kg', ${pescados})`; }, "row-level security");

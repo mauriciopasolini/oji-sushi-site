@@ -20,6 +20,7 @@ import { getSessao } from "@/lib/cmv/sessao";
 import { FORMAS_PAGAMENTO, type NotaRow, RE_UUID, TIPOS_NOTA } from "@/lib/cmv/tipos";
 import { createClient } from "@/lib/supabase/server";
 import { AcoesConferencia } from "./acoes-conferencia";
+import { AjusteDocumento } from "./ajuste-documento";
 import { VisorFoto } from "./visor-foto";
 
 export const metadata: Metadata = { title: "Conferência" };
@@ -310,6 +311,8 @@ export default async function ConferenciaPage({ searchParams }: { searchParams: 
                 {atual.descricao && linha("Descrição", atual.descricao)}
                 {atual.observacao && linha("Observação", atual.observacao)}
               </dl>
+
+              {atual.status === "ativa" && <AjusteDocumento notaId={atual.id} tipo={atual.tipo} forma={atual.forma_pagamento} bloqueado={mesFechado} />}
 
               {atual.status === "ativa" ? (
                 <AcoesConferencia

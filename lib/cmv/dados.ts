@@ -2,6 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { type DataCivil, competenciaDe, diasNoMes, montar, partes, somarDias } from "./datas";
 import { type DiaAtual, diaCompleto } from "./dia-atual";
+import { estoqueDoMes } from "./contagem";
 import { centavos } from "./dinheiro";
 import { type ConfigMes, type FaixaRegua, type PesosSemana, type ResultadoPainel, calcularPainel } from "./engine";
 import type { DadosCaixa } from "./alertas";
@@ -22,7 +23,7 @@ export async function listarCategorias(supabase: SupabaseClient) {
 }
 
 export async function listarFornecedores(supabase: SupabaseClient, { incluirInativos = false } = {}) {
-  let q = supabase.from("fornecedores").select("id, nome, categoria_padrao_id, prazo_vencimento_dias, ativo, revisado_em").order("nome");
+  let q = supabase.from("fornecedores").select("id, nome, categoria_padrao_id, prazo_vencimento_dias, tipo_padrao, forma_pagamento_padrao, ativo, revisado_em").order("nome");
   if (!incluirInativos) q = q.eq("ativo", true);
   const { data, error } = await q;
   if (error) throw new Error(`fornecedores: ${error.message}`);
@@ -112,19 +113,18 @@ export async function carregarPainel(
     supabase.from("notas").select("categoria_id, data_emissao, valor, status").eq("status", "ativa").gte("data_emissao", ini).lte("data_emissao", fim),
     supabase.from("vendas_turno").select("data, turno, total_calculado, fonte, sincronizado_em, atualizado_em").gte("data", ini).lte("data", fim),
     supabase.from("fechamento_turno").select("data, sincronizado_em").gte("data", ini).lte("data", fim),
-    // Contagens de fechamento finalizadas: a do mês anterior é o estoque inicial; a deste mês, o final.
+    // Contagens de fechamento: a do mês anterior é o estoque inicial; a deste mês, o final.
+    // Só a finalizada conta (estoqueDoMes descarta rascunho).
     supabase
       .from("contagens")
-      .select("meses!inner(competencia), contagem_itens(valor)")
-      .eq("status", "finalizada")
+      .select("status, meses!inner(competencia), contagem_itens(valor)")
       .in("meses.competencia", [anterior, ini]),
   ]);
   for (const q of [mesQ, pesosQ, reguaQ, notasQ, vendasQ, fechQ, estoqueQ]) if (q.error) throw new Error(q.error.message);
-  const estoques = (estoqueQ.data ?? []) as unknown as { meses: { competencia: string }; contagem_itens: { valor: number }[] }[];
-  const estoqueDe = (comp: string) => {
-    const c = estoques.find((e) => e.meses.competencia === comp);
-    return c ? c.contagem_itens.reduce((a, i) => a + centavos(i.valor), 0) : null;
-  };
+  const estoques = ((estoqueQ.data ?? []) as unknown as { status: "rascunho" | "finalizada"; meses: { competencia: string }; contagem_itens: { valor: number }[] }[]).map(
+    (e) => ({ competencia: e.meses.competencia, status: e.status, valores: e.contagem_itens.map((i) => i.valor) }),
+  );
+  const estoqueDe = (comp: string) => estoqueDoMes(estoques, comp, centavos);
 
   const mes = mesQ.data ?? PADRAO_MES;
   const pesosDiaSemana = Array<number>(7).fill(0);

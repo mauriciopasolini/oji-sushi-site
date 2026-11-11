@@ -267,3 +267,23 @@ As compras são concentradas na segunda (para seg–qui) e na sexta (para sex–
     - É só aditiva, e a produção atual não usa nada dela. O trigger de notas é o mesmo, só com a flag da mescla a mais.
     - Antes de aplicar, foi ensaiada com `npm run db:test-rls -- --com-migracao <arquivo>`. A opção é nova e aplica a migração dentro da transação desfeita do teste.
     - Agora são 86 testes de banco, 24 deles novos (conferência, mescla e contagem).
+
+## 2026-11-10 — Ajustes da Etapa 6 (pedido do Mauricio após o preview)
+
+100. **Padrões por fornecedor: tipo de documento e forma de pagamento** (migração 0010).
+     - Colunas novas: `fornecedores.tipo_padrao` (NF-e, cupom, comanda ou outro; "sem nota" não pode ser padrão) e `forma_pagamento_padrao`. Nulo = sem padrão.
+     - Regra (`padroesDoFornecedor`, com testes): vale o padrão cadastrado. Sem padrão, vale a regra antiga (decisão 45): NF-e; boleto se o fornecedor tem prazo, caixa se não tem.
+     - Seeds: Frumar → NF-e/boleto; FEMSA → NF-e; Fruteira → comanda; Mercado → cupom. FEMSA, Fruteira e Mercado ficaram sem forma padrão, porque o pedido não indicou uma; sem prazo cadastrado, caem em "caixa". **As notas já lançadas não foram alteradas**: as 39 ativas estão como NF-e/caixa e podem ser corrigidas na conferência (decisão 101).
+     - O fornecedor criado pelo gestor no lançamento fica sem padrões (o trigger zera, como faz com prazo e CNPJ); o admin define na tela de Fornecedores, que ganhou os dois campos.
+     - **Lançamento:** "Documento" e "Pagamento" saíram de "Mais detalhes" e ficam sempre visíveis, logo abaixo de categoria e data. Ao escolher o fornecedor, os dois são preenchidos pelo padrão e continuam editáveis. Depois que o usuário mexe num deles, esse campo não muda mais sozinho, como já acontecia com a forma e o vencimento.
+     - **Conversão de "sem nota":** ao clicar em "A nota fiscal chegou", o tipo sugerido é o padrão do fornecedor. Desmarcar "chegou sem nota" também volta ao padrão.
+     - Na edição, os valores gravados não mudam.
+101. **Ajuste de tipo e pagamento na conferência**: RPC `ajustar_nota_conferencia(nota, tipo, forma)`, só admin.
+     - Grava com o motivo **"ajuste na conferência"** na auditoria (trigger de notas, como qualquer edição).
+     - Ao contrário da edição normal, **não** devolve a nota conferida para pendente. A flag de sessão que preserva a conferência passou a se chamar `cmv.manter_conferencia` e é usada pela mescla e por este ajuste.
+     - Entrar ou sair de "sem nota" não é permitido por aqui, porque exige foto e número: continua pela edição ("A nota fiscal chegou").
+     - Mês fechado bloqueia (trigger).
+     - Na tela, um bloco "Corrigir documento e pagamento" acima dos botões Conferida/Divergente; "Salvar ajuste" só aparece quando algo mudou.
+102. **Reabrir contagem finalizada** já existia desde a decisão 97: `reabrir_contagem(id, motivo)`, só admin, motivo obrigatório, auditoria `reopen` com o motivo. Na tela, o botão "Reabrir contagem" aparece para o admin na contagem finalizada. Coberto pelos testes de banco.
+103. **Rascunho de contagem não entra em nenhum cálculo.** Só `carregarPainel` usa contagens para cálculo (estoque inicial e final do CMV real). A regra está agora em `estoqueDoMes`, função pura com teste: só a contagem **finalizada** da competência vira estoque; rascunho = sem contagem. Com o estoque final em rascunho, o mês continua no CMV de compras. Na tela de contagem, o "Estoque inicial" também usa só a contagem finalizada do mês anterior.
+     - Testes: 162 de cálculo e 95 de banco.

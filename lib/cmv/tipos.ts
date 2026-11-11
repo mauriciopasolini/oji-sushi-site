@@ -36,6 +36,8 @@ export type FornecedorRow = {
   nome: string;
   categoria_padrao_id: string;
   prazo_vencimento_dias: number | null;
+  tipo_padrao: Exclude<TipoNota, "sem_nota"> | null;
+  forma_pagamento_padrao: FormaPagamento | null;
   ativo: boolean;
   revisado_em: string | null;
 };

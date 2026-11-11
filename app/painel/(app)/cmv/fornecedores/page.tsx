@@ -31,7 +31,7 @@ export default async function FornecedoresPage({ searchParams }: { searchParams:
   const [fornQ, categorias, notasMesQ, notasTodasQ, perfisQ] = await Promise.all([
     supabase
       .from("fornecedores")
-      .select("id, nome, cnpj, categoria_padrao_id, prazo_vencimento_dias, ativo, revisado_em, criado_por, criado_em, mesclado_em_id")
+      .select("id, nome, cnpj, categoria_padrao_id, prazo_vencimento_dias, tipo_padrao, forma_pagamento_padrao, ativo, revisado_em, criado_por, criado_em, mesclado_em_id")
       .order("nome"),
     listarCategorias(supabase),
     supabase.from("notas").select("fornecedor_id").eq("status", "ativa").gte("data_emissao", competencia).lte("data_emissao", fimDoMes(competencia)).limit(5000),

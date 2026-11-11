@@ -2,6 +2,8 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { TIPOS_DOCUMENTO } from "@/lib/cmv/padroes-fornecedor";
+import { FORMAS_PAGAMENTO } from "@/lib/cmv/tipos";
 import { type DadosFornecedor, definirAtivo, marcarRevisado, mesclarFornecedores, salvarFornecedor } from "./actions";
 
 export type FornecedorLinha = {
@@ -10,6 +12,8 @@ export type FornecedorLinha = {
   cnpj: string | null;
   categoria_padrao_id: string;
   prazo_vencimento_dias: number | null;
+  tipo_padrao: string | null;
+  forma_pagamento_padrao: string | null;
   ativo: boolean;
   revisado_em: string | null;
   criado_em: string;
@@ -78,6 +82,28 @@ function Formulario({
         <span className="mb-1 block text-sm text-neutral-600">Prazo de vencimento (dias)</span>
         <input value={d.prazo_vencimento_dias} onChange={set("prazo_vencimento_dias")} inputMode="numeric" placeholder="vazio = paga no ato" className={campo} />
       </label>
+      <label className="block">
+        <span className="mb-1 block text-sm text-neutral-600">Documento padrão</span>
+        <select value={d.tipo_padrao} onChange={set("tipo_padrao")} className={campo}>
+          <option value="">Sem padrão (NF-e)</option>
+          {TIPOS_DOCUMENTO.map((t) => (
+            <option key={t.valor} value={t.valor}>
+              {t.rotulo}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="block">
+        <span className="mb-1 block text-sm text-neutral-600">Pagamento padrão</span>
+        <select value={d.forma_pagamento_padrao} onChange={set("forma_pagamento_padrao")} className={campo}>
+          <option value="">Sem padrão (boleto com prazo, caixa sem)</option>
+          {FORMAS_PAGAMENTO.map((f) => (
+            <option key={f.valor} value={f.valor}>
+              {f.rotulo}
+            </option>
+          ))}
+        </select>
+      </label>
       <label className="block sm:col-span-2">
         <span className="mb-1 block text-sm text-neutral-600">CNPJ</span>
         <input value={d.cnpj} onChange={set("cnpj")} inputMode="numeric" placeholder="00.000.000/0000-00" className={campo} />
@@ -114,7 +140,7 @@ export function NovoFornecedor({ categorias }: { categorias: Opcao[] }) {
       <h2 className="mb-3 font-semibold">Novo fornecedor</h2>
       <Formulario
         rotulo="Cadastrar"
-        inicial={{ nome: "", categoria_padrao_id: "", prazo_vencimento_dias: "", cnpj: "" }}
+        inicial={{ nome: "", categoria_padrao_id: "", prazo_vencimento_dias: "", cnpj: "", tipo_padrao: "", forma_pagamento_padrao: "" }}
         categorias={categorias}
         onCancelar={() => setAberto(false)}
         onSalvar={async (d) => {
@@ -167,6 +193,10 @@ export function LinhaFornecedor({ f, categorias, outros, rotuloMes, mes }: { f: 
           </p>
           <p className="text-sm text-neutral-600">
             {f.categoriaNome} · prazo {f.prazo_vencimento_dias === null ? "—" : `${f.prazo_vencimento_dias} dias`} · CNPJ {cnpjFormatado(f.cnpj)}
+            <br />
+            padrão: {TIPOS_DOCUMENTO.find((t) => t.valor === f.tipo_padrao)?.rotulo ?? "NF-e"} ·{" "}
+            {FORMAS_PAGAMENTO.find((x) => x.valor === f.forma_pagamento_padrao)?.rotulo ?? (f.prazo_vencimento_dias !== null ? "Boleto" : "Caixa (dinheiro)")}
+            {!f.tipo_padrao && !f.forma_pagamento_padrao && <span className="text-neutral-400"> (regra geral)</span>}
           </p>
           <p className="text-xs text-neutral-500">
             <Link href={`/painel/cmv/notas?fornecedor=${f.id}&mes=${mes}`} className="underline-offset-2 hover:underline">
@@ -208,7 +238,14 @@ export function LinhaFornecedor({ f, categorias, outros, rotuloMes, mes }: { f: 
         <div className="mt-3 rounded-xl border border-neutral-200 bg-white p-3">
           <Formulario
             rotulo="Salvar"
-            inicial={{ nome: f.nome, categoria_padrao_id: f.categoria_padrao_id, prazo_vencimento_dias: f.prazo_vencimento_dias?.toString() ?? "", cnpj: f.cnpj ?? "" }}
+            inicial={{
+              nome: f.nome,
+              categoria_padrao_id: f.categoria_padrao_id,
+              prazo_vencimento_dias: f.prazo_vencimento_dias?.toString() ?? "",
+              cnpj: f.cnpj ?? "",
+              tipo_padrao: f.tipo_padrao ?? "",
+              forma_pagamento_padrao: f.forma_pagamento_padrao ?? "",
+            }}
             categorias={categorias}
             onCancelar={() => setModo("ver")}
             onSalvar={async (d) => {

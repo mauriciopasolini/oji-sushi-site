@@ -33,11 +33,12 @@ O último merge na `main` é o `ace8c62` (indicadores de CMV). A `cmv/etapa-1` t
 
 ## 2. Só na branch, aguardando merge
 
-**Etapa 6: conferência, fornecedores e contagem de estoque** (decisões 92 a 99), aguardando o teste do Mauricio no preview.
+**Etapa 6: conferência, fornecedores e contagem de estoque** (decisões 92 a 99), aprovada pelo Mauricio no preview, mais os ajustes pedidos depois (decisões 100 a 103). Aguarda o OK para o merge.
 - `/painel/cmv/conferencia` (admin): nota a nota, foto com zoom, Conferida/Divergente, atalhos C/D/←/→, filtros, destaques e progresso. O status de conferência ficou clicável na lista e na página da nota.
 - `/painel/cmv/fornecedores` (admin): editar, desativar, marcar como revisado, mesclar e cadastrar. O alerta de fornecedores novos virou link.
 - `/painel/cmv/contagem` (gestor e admin) e `/painel/cmv/contagem/itens` (admin): cadastro de itens, contagem no celular com rascunho automático e finalização. A contagem finalizada entra no CMV real (estoque inicial/final).
-- **A migração `20261112090000_etapa6_fornecedores_contagem.sql` já está aplicada no banco compartilhado** (é aditiva; decisão 99).
+- Ajustes: tipo de documento e forma de pagamento padrão por fornecedor (preenchem o lançamento); correção de tipo/pagamento direto na conferência ("ajuste na conferência", sem reabrir a conferência); reabertura de contagem confirmada; rascunho fora de qualquer cálculo (`estoqueDoMes`, com teste).
+- **As migrações `20261112090000_etapa6_fornecedores_contagem.sql` e `20261113090000_padroes_fornecedor_ajuste_conferencia.sql` já estão aplicadas no banco compartilhado** (são aditivas; decisões 99 e 100).
 - **Prazo:** os itens de contagem precisam estar cadastrados antes de 30/11 (primeira contagem real).
 
 ## 3. Pendências abertas
@@ -76,6 +77,7 @@ O último merge na `main` é o `ace8c62` (indicadores de CMV). A `cmv/etapa-1` t
   - a contagem com rascunho e finalização no banco;
   - o estoque no CMV real;
   - a migração aplicada antes do merge.
+- **100 a 103:** padrões de documento e pagamento por fornecedor, ajuste na conferência, reabertura de contagem e rascunho fora dos cálculos.
 
 ## 5. Como retomar
 
@@ -95,9 +97,9 @@ Na Vercel (Production e Preview) estão todas, menos `SUPABASE_DB_URL`. Para env
 ```sh
 git checkout cmv/etapa-1 && git pull
 npm install
-npm run db:status          # migrações aplicadas (9, até 20261112090000_etapa6_fornecedores_contagem.sql)
-npm test                   # 158 testes de cálculo
-npm run db:test-rls        # 86 testes de regras no banco (transação desfeita: não grava nada)
+npm run db:status          # migrações aplicadas (10, até 20261113090000_padroes_fornecedor_ajuste_conferencia.sql)
+npm test                   # 162 testes de cálculo
+npm run db:test-rls        # 95 testes de regras no banco (transação desfeita: não grava nada)
 npm run typecheck
 npm run build && npx next start -p 3123   # servidor local
 sh scripts/verificar-landing.sh http://localhost:3123
