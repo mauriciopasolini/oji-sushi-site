@@ -5,11 +5,20 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { somarDias } from "@/lib/cmv/datas";
 import { centavos, formatarBRL } from "@/lib/cmv/dinheiro";
 import { ErroArquivo, caminhoFoto, prepararArquivo } from "@/lib/cmv/imagem";
+import { type TipoDocumento, padroesDoFornecedor } from "@/lib/cmv/padroes-fornecedor";
 import { FORMAS_PAGAMENTO, type FormaPagamento, TIPOS_NOTA, type TipoNota } from "@/lib/cmv/tipos";
 import { createClient } from "@/lib/supabase/client";
 import { type NotaParecida, criarFornecedor, criarNota, editarNota, verificarDuplicidade } from "./actions";
 
-export type OpcaoFornecedor = { id: string; nome: string; categoriaId: string; prazo: number | null; novo: boolean };
+export type OpcaoFornecedor = {
+  id: string;
+  nome: string;
+  categoriaId: string;
+  prazo: number | null;
+  tipoPadrao: TipoDocumento | null;
+  formaPadrao: FormaPagamento | null;
+  novo: boolean;
+};
 export type OpcaoCategoria = { id: string; nome: string };
 
 export type NotaInicial = {
@@ -69,6 +78,8 @@ export function FormNota({ modo, hoje, fornecedores: fornecedoresIniciais, maisU
   const eraSemNota = inicial?.tipo === "sem_nota";
   const [detalhesAbertos, setDetalhesAbertos] = useState(modo === "editar");
   const [tipo, setTipo] = useState<TipoNota>(converterSemNota && eraSemNota ? "nfe" : inicial?.tipo ?? "nfe");
+  // Na edição o tipo gravado vale; na conversão de "sem nota", o padrão do fornecedor sugere o tipo.
+  const [tipoTocado, setTipoTocado] = useState(modo === "editar" && !(converterSemNota && eraSemNota));
   const semNota = tipo === "sem_nota";
   const convertendo = eraSemNota && !semNota;
   const [numero, setNumero] = useState(inicial?.numero ?? "");
@@ -94,12 +105,16 @@ export function FormNota({ modo, hoje, fornecedores: fornecedoresIniciais, maisU
   const fornecedor = fornecedorId ? porId.get(fornecedorId) : undefined;
   const categoriaFora = Boolean(fornecedor && categoriaId && fornecedor.categoriaId !== categoriaId);
 
+  const padrao = fornecedor ? padroesDoFornecedor(fornecedor) : null;
+
   // Padrões que dependem do fornecedor e da data (até o usuário mexer).
   useEffect(() => {
     if (!fornecedor) return;
-    if (!formaTocada) setForma(fornecedor.prazo !== null ? "boleto" : "caixa");
+    const p = padroesDoFornecedor(fornecedor);
+    if (!formaTocada) setForma(p.forma);
+    if (!tipoTocado) setTipo((t) => (t === "sem_nota" ? t : p.tipo));
     if (!vencimentoTocado) setVencimento(fornecedor.prazo !== null && dataEmissao ? somarDias(dataEmissao, fornecedor.prazo) : "");
-  }, [fornecedor, dataEmissao, formaTocada, vencimentoTocado]);
+  }, [fornecedor, dataEmissao, formaTocada, vencimentoTocado, tipoTocado]);
 
   useEffect(() => {
     if (!arquivo || arquivo.type === "application/pdf") return setPreview(null);
@@ -138,7 +153,7 @@ export function FormNota({ modo, hoje, fornecedores: fornecedoresIniciais, maisU
     const r = await criarFornecedor(novoForn.nome, novoForn.categoriaId);
     setEtapa(null);
     if (!r.ok) return setErro(r.erro);
-    const f: OpcaoFornecedor = { id: r.dados.id, nome: r.dados.nome, categoriaId: novoForn.categoriaId, prazo: null, novo: true };
+    const f: OpcaoFornecedor = { id: r.dados.id, nome: r.dados.nome, categoriaId: novoForn.categoriaId, prazo: null, tipoPadrao: null, formaPadrao: null, novo: true };
     setFornecedores((xs) => [...xs, f].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR")));
     escolherFornecedor(f);
   }
@@ -434,7 +449,7 @@ export function FormNota({ modo, hoje, fornecedores: fornecedoresIniciais, maisU
               type="checkbox"
               checked={semNota}
               onChange={(e) => {
-                setTipo(e.target.checked ? "sem_nota" : "nfe");
+                setTipo(e.target.checked ? "sem_nota" : (padrao?.tipo ?? "nfe"));
                 if (!e.target.checked && eraSemNota) setDetalhesAbertos(true);
               }}
               className="mt-1 h-5 w-5 accent-amber-600"
@@ -490,6 +505,49 @@ export function FormNota({ modo, hoje, fornecedores: fornecedoresIniciais, maisU
         </label>
       </section>
 
+      {/* Documento e pagamento: vêm do fornecedor, editáveis */}
+      <section className="grid grid-cols-2 gap-3">
+        {!semNota && (
+          <label className="block">
+            <span className={rotulo}>Documento</span>
+            <select
+              value={tipo}
+              onChange={(e) => {
+                setTipo(e.target.value as TipoNota);
+                setTipoTocado(true);
+              }}
+              className={campo}
+            >
+              {TIPOS_NOTA.filter((t) => t.valor !== "sem_nota" || !(modo === "criar" || eraSemNota)).map((t) => (
+                <option key={t.valor} value={t.valor}>
+                  {t.rotulo}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        <label className={`block ${semNota ? "col-span-2" : ""}`}>
+          <span className={rotulo}>Pagamento</span>
+          <select
+            value={forma}
+            onChange={(e) => {
+              setForma(e.target.value as FormaPagamento);
+              setFormaTocada(true);
+            }}
+            className={campo}
+          >
+            {FORMAS_PAGAMENTO.map((f) => (
+              <option key={f.valor} value={f.valor}>
+                {f.rotulo}
+              </option>
+            ))}
+          </select>
+        </label>
+        {padrao && modo === "criar" && (tipoTocado || formaTocada) === false && (fornecedor?.tipoPadrao || fornecedor?.formaPadrao) && (
+          <p className="col-span-2 -mt-1 text-xs text-neutral-500">Padrão do fornecedor (pode trocar).</p>
+        )}
+      </section>
+
       {/* Mais detalhes */}
       <section className="rounded-xl border border-neutral-200 bg-white">
         <button type="button" onClick={() => setDetalhesAbertos((x) => !x)} className="flex w-full justify-between px-4 py-3 font-medium" aria-expanded={detalhesAbertos}>
@@ -497,16 +555,6 @@ export function FormNota({ modo, hoje, fornecedores: fornecedoresIniciais, maisU
         </button>
         {detalhesAbertos && (
           <div className="grid grid-cols-1 gap-3 border-t border-neutral-100 p-4 sm:grid-cols-2">
-            <label className="block">
-              <span className={rotulo}>Tipo</span>
-              <select value={tipo} onChange={(e) => setTipo(e.target.value as TipoNota)} className={campo}>
-                {TIPOS_NOTA.map((t) => (
-                  <option key={t.valor} value={t.valor}>
-                    {t.rotulo}
-                  </option>
-                ))}
-              </select>
-            </label>
             <label className="block">
               <span className={rotulo}>Número</span>
               <input value={numero} onChange={(e) => setNumero(e.target.value)} inputMode="numeric" className={campo} />
@@ -522,23 +570,6 @@ export function FormNota({ modo, hoje, fornecedores: fornecedoresIniciais, maisU
                 }}
                 className={campo}
               />
-            </label>
-            <label className="block">
-              <span className={rotulo}>Forma de pagamento</span>
-              <select
-                value={forma}
-                onChange={(e) => {
-                  setForma(e.target.value as FormaPagamento);
-                  setFormaTocada(true);
-                }}
-                className={campo}
-              >
-                {FORMAS_PAGAMENTO.map((f) => (
-                  <option key={f.valor} value={f.valor}>
-                    {f.rotulo}
-                  </option>
-                ))}
-              </select>
             </label>
             <label className="block sm:col-span-2">
               <span className={rotulo}>Descrição</span>

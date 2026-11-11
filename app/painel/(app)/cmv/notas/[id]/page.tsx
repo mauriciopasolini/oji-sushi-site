@@ -6,6 +6,7 @@ import { getSessao } from "@/lib/cmv/sessao";
 import { FORMAS_PAGAMENTO, type NotaRow, RE_UUID, ROTULO_CONFERENCIA, TIPOS_NOTA, ehPendenteNF } from "@/lib/cmv/tipos";
 import { createClient } from "@/lib/supabase/server";
 import { CancelarNota } from "./cancelar-nota";
+import { StatusConferencia } from "../status-conferencia";
 import { JustificarPendencia } from "./justificar-pendencia";
 
 export const metadata: Metadata = { title: "Nota" };
@@ -152,7 +153,17 @@ export default async function NotaPage({ params, searchParams }: { params: Promi
             {linha("Pagamento", FORMAS_PAGAMENTO.find((f) => f.valor === nota.forma_pagamento)?.rotulo)}
             {nota.descricao && linha("Descrição", nota.descricao)}
             {nota.observacao && linha("Observação", nota.observacao)}
-            {linha("Conferência", ROTULO_CONFERENCIA[nota.conferencia] + (nota.conferencia_obs ? ` · ${nota.conferencia_obs}` : ""))}
+            {linha(
+              "Conferência",
+              ehAdmin && nota.status === "ativa" && !mesFechado ? (
+                <span className="inline-flex flex-col items-end gap-0.5">
+                  <StatusConferencia id={id} conferencia={nota.conferencia} observacao={nota.conferencia_obs} />
+                  {nota.conferencia_obs && <span className="text-xs font-normal text-neutral-600">{nota.conferencia_obs}</span>}
+                </span>
+              ) : (
+                ROTULO_CONFERENCIA[nota.conferencia] + (nota.conferencia_obs ? ` · ${nota.conferencia_obs}` : "")
+              ),
+            )}
           </dl>
           {editavel && (
             <div className="flex flex-wrap gap-2">
