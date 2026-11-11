@@ -33,9 +33,11 @@ O último merge na `main` é o `8740515`. A `cmv/etapa-1` está igual à `main`.
 
 ## 2. Só na branch, aguardando merge
 
-- **Indicadores de CMV (decisões 88 a 91):** CMV projetado de fechamento como indicador principal, tabela "CMV por semana" (semanas fechadas e acumulado), CMV parcial só informativo e ritmo sem prorrateio diário. Aguarda o OK do Mauricio no preview.
+Nada. Em produção desde 10/11/2026:
+- dia em andamento (decisão 87), merge `9783142`;
+- indicadores de CMV (decisões 88 a 91: CMV projetado, CMV por semana, parcial informativo, ritmo sem prorrateio), merge `ace8c62`, aprovados pelo Mauricio no preview, inclusive a régua proporcional por categoria, o semáforo do ritmo e a função compartilhada com o relatório.
 
-O dia em andamento (decisão 87) já está em produção (merge `9783142`).
+`verificar-landing.sh` passou em produção depois dos dois merges.
 
 ## 3. Pendências abertas
 
