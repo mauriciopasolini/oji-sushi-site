@@ -33,7 +33,9 @@ O último merge na `main` é o `8740515`. A `cmv/etapa-1` está igual à `main`.
 
 ## 2. Só na branch, aguardando merge
 
-- **Dia em andamento (decisão 87):** a sincronização lê também a aba de hoje. Os turnos preenchidos aparecem como "parcial" no painel e na tela Vendas, fora do cálculo até os dois turnos estarem preenchidos ou até a sincronização depois da meia-noite. Aguarda o OK do Mauricio para o merge.
+- **Indicadores de CMV (decisões 88 a 91):** CMV projetado de fechamento como indicador principal, tabela "CMV por semana" (semanas fechadas e acumulado), CMV parcial só informativo e ritmo sem prorrateio diário. Aguarda o OK do Mauricio no preview.
+
+O dia em andamento (decisão 87) já está em produção (merge `9783142`).
 
 ## 3. Pendências abertas
 
@@ -47,7 +49,7 @@ O último merge na `main` é o `8740515`. A `cmv/etapa-1` está igual à `main`.
 | 6 | **Banco separado para o preview** | Não iniciado. Hoje preview e produção usam o **mesmo** Supabase (`zjmzujzgwgkplghszuyi`): o que se lança no preview vai para o banco real e as migrações valem para os dois na hora em que são aplicadas. |
 | 7 | **Cores da coluna Total em Vendas** | ✅ **Concluída hoje** e em produção (decisão 81). Falta só ver num celular de verdade o comportamento ao tocar. |
 | 8 | **Etapa 6: conferência das notas e contagem de estoque** | Próxima etapa. **A contagem de estoque precisa estar pronta para 30/11/2026** (fechamento de novembro). A conferência deve destacar: fornecedor "novo", categoria fora do padrão, possíveis duplicidades, compras aguardando nota fiscal (`ehPendenteNF`) e dias com "possível cupom não lançado". |
-| 9 | **Etapa 7: fechamento do mês e PDF/Excel** | Checklist do fechamento: zero compras aguardando nota fiscal ou uma justificativa por pendente (o banco já recusa fechar sem isso: decisão 86). |
+| 9 | **Etapa 7: fechamento do mês e PDF/Excel** | Checklist do fechamento: zero compras aguardando nota fiscal ou uma justificativa por pendente (o banco já recusa fechar sem isso: decisão 86). Incluir no relatório a tabela "CMV por semana" (`calcularCmvSemanas`, decisão 89). |
 | 10 | **Etapa 8: revisão final e `docs/cmv/OPERACAO.md`** | Também: tela de configurações (Etapa 9 do briefing) e mescla de fornecedores. |
 
 ## 4. Decisões de hoje (em `docs/cmv/DECISOES.md`)
@@ -83,7 +85,7 @@ Na Vercel (Production e Preview) estão todas, menos `SUPABASE_DB_URL`. Para env
 git checkout cmv/etapa-1 && git pull
 npm install
 npm run db:status          # migrações aplicadas (8, até 20261111090000_compra_sem_nota.sql)
-npm test                   # 126 testes de cálculo
+npm test                   # 137 testes de cálculo
 npm run db:test-rls        # 62 testes de regras no banco (transação desfeita: não grava nada)
 npm run typecheck
 npm run build && npx next start -p 3123   # servidor local

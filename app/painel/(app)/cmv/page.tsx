@@ -9,6 +9,7 @@ import { type CorSemaforo, type OrcamentoCategoria, corVendas } from "@/lib/cmv/
 import { getSessao } from "@/lib/cmv/sessao";
 import { RE_UUID } from "@/lib/cmv/tipos";
 import { createClient } from "@/lib/supabase/server";
+import { TabelaCmvSemanas } from "./cmv-semanas";
 import { BotaoSincronizar, SincronizacaoAutomatica } from "./sincronizacao/componentes";
 
 export const metadata: Metadata = { title: "CMV" };
@@ -20,7 +21,7 @@ const quando = (ts: string) =>
 
 const SEMAFORO: Record<CorSemaforo, { rotulo: string; ponto: string; texto: string }> = {
   verde: { rotulo: "No ritmo", ponto: "bg-green-500", texto: "text-green-800" },
-  amarelo: { rotulo: "Atenção ao ritmo", ponto: "bg-amber-400", texto: "text-amber-800" },
+  amarelo: { rotulo: "Acima do ritmo (até 10%)", ponto: "bg-amber-400", texto: "text-amber-800" },
   vermelho: { rotulo: "Acima do ritmo", ponto: "bg-red-500", texto: "text-red-700" },
 };
 
@@ -166,6 +167,8 @@ export default async function CmvPage({ searchParams }: { searchParams: Promise<
   const catNova = nova ? r.categorias.find((c) => c.categoriaId === nova.categoria_id) : undefined;
   const catTabela = r.categorias.find((c) => c.categoriaId === sp.cat) ?? principal;
   const p = r.projecao;
+  const cp = r.cmvProjetado;
+  const meta = mes.metaCmvPct;
   const { ano, mes: m } = partes(competencia);
   // Dia em andamento: só exibição, fora do cálculo enquanto os dois turnos não estiverem preenchidos.
   const diaAtual = ehMesAtual ? mesclarDiaAtual(hoje, painel.hojeNoBanco, caixa.diaAtual) : null;
@@ -269,30 +272,55 @@ export default async function CmvPage({ searchParams }: { searchParams: Promise<
 
         {/* CMV */}
         <div className="rounded-2xl border border-neutral-200 bg-white p-4">
-          <h2 className="font-semibold">CMV parcial</h2>
+          <h2 className="font-semibold">CMV projetado de fechamento</h2>
           <div className="mt-3 flex items-end gap-3">
-            <p className="text-3xl font-bold tabular-nums">{r.cmv.cmvPct !== null ? formatarPct(r.cmv.cmvPct) : "—"}</p>
-            {r.cmv.faixa && (
-              <span className="mb-1 rounded-full px-2.5 py-0.5 text-sm font-semibold text-white" style={{ backgroundColor: r.cmv.faixa.cor }}>
-                {r.cmv.faixa.faixa}
+            <p className="text-3xl font-bold tabular-nums">{cp.pct !== null ? formatarPct(cp.pct) : "—"}</p>
+            {cp.faixa && (
+              <span className="mb-1 rounded-full px-2.5 py-0.5 text-sm font-semibold text-white" style={{ backgroundColor: cp.faixa.cor }}>
+                {cp.faixa.faixa}
               </span>
             )}
           </div>
-          {r.cmv.cmvPct === null && r.cmv.compras === 0 ? (
-            <p className="text-sm text-neutral-500">Sem compras lançadas no mês · meta {formatarPct(0.35, 0)}</p>
-          ) : (
-            <p className="text-sm text-neutral-500 tabular-nums">
-              {r.cmv.tipo === "real" ? "CMV real" : "CMV de compras"}: {formatarBRL(r.cmv.compras)} ÷ venda {formatarBRL(r.cmv.vendaBase)} · meta {formatarPct(0.35, 0)}
+          <p className="text-sm text-neutral-500 tabular-nums">
+            (compras {formatarBRL(cp.compras)} + planejado restante {formatarBRL(cp.planejadoRestante)}) ÷ projeção {formatarBRL(p.projecao)} · meta{" "}
+            {formatarPct(meta, 0)}
+          </p>
+          <p className="mt-3 text-sm tabular-nums">
+            {cp.podeComprar >= 0 ? (
+              <>
+                Para fechar em {formatarPct(meta, 0)}, ainda pode comprar até <strong>{formatarBRL(cp.podeComprar)}</strong> no mês
+              </>
+            ) : (
+              <span className="text-red-700">
+                As compras já passaram <strong>{formatarBRL(-cp.podeComprar)}</strong> do teto de {formatarPct(meta, 0)} do mês
+              </span>
+            )}
+          </p>
+          <p className="text-xs text-neutral-500 tabular-nums">
+            Teto total ({formatarPct(meta, 0)} da projeção) {formatarBRL(r.tetoTotal)} · comprado {formatarBRL(r.compradoTotal)}
+          </p>
+
+          <div className="mt-4 border-t border-neutral-100 pt-3">
+            <p className="text-sm text-neutral-500">{r.cmv.tipo === "real" ? "CMV real" : "CMV parcial"} (informativo)</p>
+            <p className="text-xl font-semibold text-neutral-700 tabular-nums">
+              {r.cmv.cmvPct !== null ? formatarPct(r.cmv.cmvPct) : "—"}
+              <span className="ml-2 text-sm font-normal text-neutral-500">
+                {r.cmv.compras === 0 ? "sem compras lançadas no mês" : `${formatarBRL(r.cmv.compras)} ÷ ${formatarBRL(r.cmv.vendaBase)}`}
+              </span>
             </p>
-          )}
-          <p className="mt-2 text-xs text-neutral-500">
-            No meio do mês o CMV de compras oscila (compras se concentram em alguns dias). O valor de referência é o do fechamento.
-          </p>
-          <p className="mt-3 text-sm text-neutral-600 tabular-nums">
-            Teto total de compras (35% da projeção): <strong>{formatarBRL(r.tetoTotal)}</strong> · comprado {formatarBRL(r.compradoTotal)}
-          </p>
+            <p className="mt-1 text-xs text-neutral-500">Compras ÷ venda até ontem. Sobe após cada compra grande e se dilui até o fim do mês.</p>
+          </div>
         </div>
       </section>
+
+      {principal && (
+        <TabelaCmvSemanas
+          dados={r.cmvSemanas}
+          categorias={r.categorias.map((c) => ({ categoriaId: c.categoriaId, nome: c.nome }))}
+          principal={{ categoriaId: principal.categoriaId, nome: principal.nome }}
+          metaCmvPct={meta}
+        />
+      )}
 
       {/* Tabela semanal */}
       {catTabela && (

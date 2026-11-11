@@ -146,12 +146,13 @@ export function gerarAlertas(params: {
         titulo: `${c.nome}: semana estourada em ${formatarBRL(-c.disponivelAgora)}`,
         detalhe: "O excesso já foi descontado do orçamento das próximas semanas.",
       });
-    } else if (c.ritmo.cor === "vermelho" && !c.estouroMes) {
+    } else if (c.ritmo.desvio > 0 && !c.estouroMes) {
+      // Acima do ritmo = comprado no mês passou das semanas encerradas + orçamento inteiro da semana atual.
       alertas.push({
         id: `ritmo-${c.categoriaId}`,
         nivel: "aviso",
         titulo: `${c.nome}: compras acima do ritmo`,
-        detalhe: `Comprado ${formatarBRL(c.ritmo.comprado)}; o esperado até hoje era ${formatarBRL(c.ritmo.esperadoAteHoje)}.`,
+        detalhe: `Comprado ${formatarBRL(c.ritmo.comprado)}; o planejado até o fim desta semana é ${formatarBRL(c.ritmo.esperadoAteFimDaSemana)}.`,
       });
     }
   }

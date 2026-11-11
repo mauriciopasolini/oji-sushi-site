@@ -182,3 +182,26 @@ Registro cronológico. Cada item: decisão, motivo e data.
     - **Banco × planilha:** turno a turno, vale o banco (ex.: lançamento manual) quando tem valor; senão, a leitura da planilha.
     - **Dia gravado no meio do preenchimento** (ex.: T2 só com o restaurante): as linhas são da planilha, então cada sincronização seguinte do mesmo dia e a das 04:00 (em que ele já é "ontem") regravam o dia inteiro com os valores atuais da planilha (upsert, sem conflito). Teste em `planejar.test.ts`.
     - **Limitação aceita:** se a planilha ficar completa, for gravada e depois um turno for apagado no mesmo dia, o valor gravado permanece até a sincronização depois da meia-noite, que regrava o dia.
+
+## 2026-11-10 — Indicadores de CMV sem a distorção do calendário de compras (pedido do Mauricio)
+
+As compras são concentradas na segunda (para seg–qui) e na sexta (para sex–dom). Por isso o CMV parcial e o ritmo prorrateado por dia davam "47,3% Crítico" e "acima do ritmo" com as compras dentro do planejado.
+
+88. **CMV projetado de fechamento: indicador principal do card de CMV, com a régua** (`calcularCmvProjetado`).
+    - Fórmula: (compras ativas do mês + planejado restante) ÷ projeção conservadora.
+    - Planejado restante, por categoria = planejado **original** das semanas futuras + max(0, planejado original da semana atual − comprado na semana atual). Semanas encerradas não somam nada.
+    - O planejado original (não o redistribuído) faz a compra além do plano aparecer no %.
+    - Abaixo: "Para fechar em 35%, ainda pode comprar até R$ X no mês" (teto total − compras do mês). Se as compras já passaram do teto, a frase mostra quanto passaram, em vermelho.
+89. **CMV por semana fechada** (`calcularCmvSemanas`, seção "CMV por semana" no painel).
+    - Uma linha por semana: venda, compras por categoria (pela data da nota), CMV total e CMV da categoria principal (Pescados e Linha Seca).
+    - **Semana fechada** = o último dia já passou e todos os dias dela têm venda registrada. Só ela mostra %.
+    - Demais situações, sem %: a semana atual aparece "em andamento", com valores parciais em cinza (sem o dia parcial de hoje, decisão 87); semana passada com dia sem venda fica "aguardando vendas"; semanas futuras, "—".
+    - **Acumulado das semanas fechadas**: soma da venda e das compras das semanas fechadas, com o mesmo cálculo.
+    - **Régua por categoria**: a régua do total escalada pela meta da categoria (`reguaDaCategoria`: limite × pct_meta_cat ÷ meta_cmv_pct). Pescados (26,67%) fica assim: Ótimo ≤ 27,43%, Bom ≤ 28,57%, Atenção ≤ 29,71%, Crítico acima. O total usa a régua como está (meta de 35%).
+    - O relatório de fechamento (Etapa 7) deve incluir esta mesma tabela, a partir da mesma função.
+90. **CMV parcial vira informativo**: cor neutra, sem faixa da régua, com o texto "Compras ÷ venda até ontem. Sobe após cada compra grande e se dilui até o fim do mês." A régua com cor vale só para o CMV projetado, as semanas fechadas e o fechamento. O motor continua calculando `cmv.faixa`, para uso no fechamento.
+91. **Ritmo de compra sem prorrateio diário.**
+    - Esperado = orçamento das semanas encerradas + orçamento **inteiro** da semana atual. O campo agora se chama `esperadoAteFimDaSemana`; com o mês encerrado, vale o orçamento de todas as semanas.
+    - Semáforo: verde ≤ 0; amarelo até +10% ("Acima do ritmo (até 10%)"); vermelho acima disso ("Acima do ritmo").
+    - O alerta "compras acima do ritmo" aparece sempre que o desvio passa de zero (antes só no vermelho), com o texto "o planejado até o fim desta semana é R$ X". O alerta de semana estourada continua tendo prioridade.
+    - Cenário de 10/11 (Pescados, projeção 100.517,64): S1 6.868,73 e S2 5.171,46 dão CMV projetado de 26,28% (Ótimo) e nenhum alerta de ritmo; o CMV da S1 é 26,81%. Os dois valores estão nos testes.
