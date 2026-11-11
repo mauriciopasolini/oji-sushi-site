@@ -4,7 +4,7 @@ Atualizado em **10/11/2026**. Branch de trabalho: `cmv/etapa-1`. Produção: `ma
 
 ## 1. Pronto e em produção
 
-O último merge na `main` é o `ace8c62` (indicadores de CMV). A `cmv/etapa-1` tem a Etapa 6 a mais (seção 2).
+O último merge na `main` é o `46d0e32` (Etapa 6 e ajustes, 10/11/2026). A `cmv/etapa-1` está igual à `main` (mais este commit de docs).
 
 **Landing**
 - Byte a byte igual à tag `estado-original`, com uma única exceção autorizada: o link "Acesso equipe" no rodapé (decisão 78).
@@ -25,6 +25,15 @@ O último merge na `main` é o `ace8c62` (indicadores de CMV). A `cmv/etapa-1` t
 - Coluna Total da tela Vendas colorida pela meta, com ▲/▼ e diferença ao passar o mouse ou tocar.
 - Compra sem nota fiscal ("Sem nota (aguardando)"), aviso de possível duplicidade e fechamento que exige zero pendentes ou justificativa.
 
+**Etapa 6: conferência, fornecedores e contagem de estoque** (decisões 92 a 103), aprovada pelo Mauricio no preview e em produção desde 10/11/2026 (merge `46d0e32`).
+- `/painel/cmv/conferencia` (admin): nota a nota, foto com zoom, Conferida/Divergente, atalhos C/D/←/→, filtros, destaques e progresso. O status de conferência ficou clicável na lista e na página da nota.
+- `/painel/cmv/fornecedores` (admin): editar, desativar, marcar como revisado, mesclar e cadastrar. O alerta de fornecedores novos virou link.
+- `/painel/cmv/contagem` (gestor e admin) e `/painel/cmv/contagem/itens` (admin): cadastro de itens, contagem no celular com rascunho automático e finalização. A contagem finalizada entra no CMV real (estoque inicial/final).
+- Ajustes: tipo de documento e forma de pagamento padrão por fornecedor (preenchem o lançamento); correção de tipo/pagamento direto na conferência ("ajuste na conferência", sem reabrir a conferência); reabertura de contagem confirmada; rascunho fora de qualquer cálculo (`estoqueDoMes`, com teste).
+- **As migrações `20261112090000_etapa6_fornecedores_contagem.sql` e `20261113090000_padroes_fornecedor_ajuste_conferencia.sql` já estão aplicadas no banco compartilhado** (são aditivas; decisões 99 e 100).
+- **Prazo:** os itens de contagem precisam estar cadastrados antes de 30/11 (primeira contagem real).
+- Conferido em produção depois do merge: `verificar-landing.sh` passou (landing byte a byte + link "Acesso equipe"; arquivos internos dão 404; `noindex` no painel), e todas as rotas do painel, inclusive as novas, redirecionam para o login. **Falta o Mauricio abrir logado** Painel, Conferência, Fornecedores e Contagem em produção: o Claude não tem acesso de login e não conseguiu confirmar por fora que o build novo já está no ar.
+
 **Dados reais no banco**
 - Vendas de 01 a 08/11/2026: 64 linhas, total **R$ 30.670,84**.
 - Meses: 11/2026 (meta R$ 95.000, com planilha) e 12/2026 (meta R$ 100.000).
@@ -33,13 +42,7 @@ O último merge na `main` é o `ace8c62` (indicadores de CMV). A `cmv/etapa-1` t
 
 ## 2. Só na branch, aguardando merge
 
-**Etapa 6: conferência, fornecedores e contagem de estoque** (decisões 92 a 99), aprovada pelo Mauricio no preview, mais os ajustes pedidos depois (decisões 100 a 103). Aguarda o OK para o merge.
-- `/painel/cmv/conferencia` (admin): nota a nota, foto com zoom, Conferida/Divergente, atalhos C/D/←/→, filtros, destaques e progresso. O status de conferência ficou clicável na lista e na página da nota.
-- `/painel/cmv/fornecedores` (admin): editar, desativar, marcar como revisado, mesclar e cadastrar. O alerta de fornecedores novos virou link.
-- `/painel/cmv/contagem` (gestor e admin) e `/painel/cmv/contagem/itens` (admin): cadastro de itens, contagem no celular com rascunho automático e finalização. A contagem finalizada entra no CMV real (estoque inicial/final).
-- Ajustes: tipo de documento e forma de pagamento padrão por fornecedor (preenchem o lançamento); correção de tipo/pagamento direto na conferência ("ajuste na conferência", sem reabrir a conferência); reabertura de contagem confirmada; rascunho fora de qualquer cálculo (`estoqueDoMes`, com teste).
-- **As migrações `20261112090000_etapa6_fornecedores_contagem.sql` e `20261113090000_padroes_fornecedor_ajuste_conferencia.sql` já estão aplicadas no banco compartilhado** (são aditivas; decisões 99 e 100).
-- **Prazo:** os itens de contagem precisam estar cadastrados antes de 30/11 (primeira contagem real).
+Nada.
 
 ## 3. Pendências abertas
 
@@ -52,7 +55,7 @@ O último merge na `main` é o `ace8c62` (indicadores de CMV). A `cmv/etapa-1` t
 | 5 | **Backup semanal** | Não iniciado. Definir o que copiar (banco e bucket `notas`), para onde e quem roda. O Supabase CLI não roda nesta máquina (Smart App Control), então o backup deve usar `pg_dump`/biblioteca `postgres` ou um agendamento na nuvem. |
 | 6 | **Banco separado para o preview** | Não iniciado. Hoje preview e produção usam o **mesmo** Supabase (`zjmzujzgwgkplghszuyi`): o que se lança no preview vai para o banco real e as migrações valem para os dois na hora em que são aplicadas. |
 | 7 | **Cores da coluna Total em Vendas** | ✅ **Concluída hoje** e em produção (decisão 81). Falta só ver num celular de verdade o comportamento ao tocar. |
-| 8 | **Etapa 6: conferência, fornecedores e contagem** | Na branch, aguardando OK (seção 2). Depois do merge: o Mauricio cadastra os itens de contagem; a 1ª contagem real é em 30/11/2026. |
+| 8 | **Etapa 6: conferência, fornecedores e contagem** | ✅ Em produção (merge `46d0e32`). A fazer: o Mauricio confere as telas logado em produção e cadastra os itens de contagem; a 1ª contagem real é em 30/11/2026. As 39 notas lançadas como NF-e/caixa podem ser corrigidas na conferência. |
 | 9 | **Etapa 7: fechamento do mês e PDF/Excel** | Checklist do fechamento: zero compras aguardando nota fiscal ou uma justificativa por pendente (o banco já recusa fechar sem isso: decisão 86). Incluir no relatório a tabela "CMV por semana" (`calcularCmvSemanas`, decisão 89). |
 | 10 | **Etapa 8: revisão final e `docs/cmv/OPERACAO.md`** | Também: tela de configurações (Etapa 9 do briefing). A mescla de fornecedores saiu na Etapa 6. |
 
