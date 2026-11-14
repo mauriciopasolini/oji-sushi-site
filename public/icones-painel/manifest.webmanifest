@@ -1,0 +1,17 @@
+{
+  "name": "Oji CMV",
+  "short_name": "Oji CMV",
+  "id": "/painel",
+  "start_url": "/painel",
+  "scope": "/painel",
+  "display": "standalone",
+  "lang": "pt-BR",
+  "theme_color": "#E8321A",
+  "background_color": "#E8321A",
+  "icons": [
+    { "src": "/icones-painel/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icones-painel/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icones-painel/icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icones-painel/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
