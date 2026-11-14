@@ -1,14 +1,19 @@
 # Status do módulo de CMV
 
-Atualizado em **10/11/2026**. Branch de trabalho: `cmv/etapa-1`. Produção: `main`, publicada em https://www.ojisushi.com.br.
+Atualizado em **14/11/2026**. Branch de trabalho: `cmv/etapa-1`. Produção: `main`, publicada em https://www.ojisushi.com.br.
 
 ## 1. Pronto e em produção
 
-O último merge na `main` é o `46d0e32` (Etapa 6 e ajustes, 10/11/2026). A `cmv/etapa-1` está igual à `main` (mais este commit de docs).
+O último merge na `main` é o `3ac1fcc` (favicon e ícones, 14/11/2026). A `cmv/etapa-1` está igual à `main` (mais este commit de docs).
 
 **Landing**
-- Byte a byte igual à tag `estado-original`, com uma única exceção autorizada: o link "Acesso equipe" no rodapé (decisão 78).
-- `scripts/verificar-landing.sh` confere isso. Passou em produção depois de cada merge de hoje.
+- Byte a byte igual à tag `estado-original`, com duas exceções autorizadas: o link "Acesso equipe" no rodapé (decisão 78) e as duas tags `<link>` de favicon no `<head>`, com `public/favicon.ico` e `public/apple-touch-icon.png` (decisão 104).
+- `scripts/verificar-landing.sh` confere isso. Passou em produção depois do merge `3ac1fcc` (14/11/2026). Em previews `*.vercel.app` ele usa o bypass de automação do `.env.local` (decisão 105).
+
+**Favicon e ícones (14/11/2026, decisões 104 e 105)**
+- Placa `#E8321A` com o símbolo "oji" em off-white; o painel tem um ponto escuro no canto. Gerador: `python scripts/gerar-icones.py`.
+- Painel: ícones e manifest "Oji CMV" em `public/icones-painel/` (fora de `/painel` por causa do login do proxy).
+- O deploy pelo Git do commit `06ac7d9` não disparou (aviso de push perdido entre GitHub e Vercel; o push seguinte funcionou). Se repetir: preview manual com `vercel deploy` a partir de `git archive` (decisão 105).
 
 **Etapas 1 a 5 do `PROMPT.md`**
 - Login, papéis (admin e gestor) e troca de senha obrigatória.
@@ -48,7 +53,7 @@ Nada.
 
 | # | Pendência | Situação / o que se sabe |
 |---|---|---|
-| 1 | **Loop de redirecionamento no preview** | Relatado pelo Mauricio; não investigado nesta sessão. Ao retomar: reproduzir no alias do preview (`oji-sushi-site-git-cmv-etapa-1-mauricio-s-projects17.vercel.app`), olhar `proxy.ts` (redireciona `/painel` ↔ `/painel/login`) e a proteção de deploy da Vercel (o preview pode exigir login da Vercel antes do app). |
+| 1 | **Loop de redirecionamento no preview** | Relatado pelo Mauricio; não investigado. Em 14/11 os previews responderam 302 para o login da Vercel (Deployment Protection), o que pode ser a origem; com o bypass (decisão 105) dá para testar o app sem login na Vercel. Ao retomar: reproduzir no alias do preview (`oji-sushi-site-git-cmv-etapa-1-mauricio-s-projects17.vercel.app`), olhar `proxy.ts` (redireciona `/painel` ↔ `/painel/login`) e a proteção de deploy da Vercel (o preview pode exigir login da Vercel antes do app). |
 | 2 | **Restringir o `limpar-teste`** | O script (`scripts/limpar-dados-teste.mjs`) já pede código de confirmação. Falta limitar o que ele pode apagar (ex.: só registros marcados como teste ou criados por usuários de teste), agora que há dados reais. |
 | 3 | **Limpeza pontual das notas de teste** | ✅ **Concluída hoje.** Foram apagadas 5 notas canceladas (1 Frumar de R$ 121,00 em 09/11 e 4 "TESTE AUTOMATIZADO" de 06/2027), 10 registros de histórico, 1 foto e o mês 06/2027. Tudo numa transação, com conferência das vendas (R$ 30.670,84 intactos). |
 | 4 | **Troca de foto na edição** | Relatado pelo Mauricio; detalhe a confirmar com ele. Hoje a edição aceita foto nova com nome novo (a antiga fica no bucket e na auditoria; a página da nota lista "Fotos anteriores"). A foto vai para a pasta do mês da data da nota. |
@@ -58,6 +63,7 @@ Nada.
 | 8 | **Etapa 6: conferência, fornecedores e contagem** | ✅ Em produção (merge `46d0e32`). A fazer: o Mauricio confere as telas logado em produção e cadastra os itens de contagem; a 1ª contagem real é em 30/11/2026. As 39 notas lançadas como NF-e/caixa podem ser corrigidas na conferência. |
 | 9 | **Etapa 7: fechamento do mês e PDF/Excel** | Checklist do fechamento: zero compras aguardando nota fiscal ou uma justificativa por pendente (o banco já recusa fechar sem isso: decisão 86). Incluir no relatório a tabela "CMV por semana" (`calcularCmvSemanas`, decisão 89). |
 | 10 | **Etapa 8: revisão final e `docs/cmv/OPERACAO.md`** | Também: tela de configurações (Etapa 9 do briefing). A mescla de fornecedores saiu na Etapa 6. |
+| 11 | **`theme-color` do painel** | Continua `#111111` (barra de status do atalho "Oji CMV" fica grafite). O manifest tem `#E8321A`; trocar a tag se o Mauricio quiser a barra vermelha. |
 
 ## 4. Decisões de hoje (em `docs/cmv/DECISOES.md`)
 
