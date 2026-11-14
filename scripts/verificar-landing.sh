@@ -7,8 +7,15 @@
 #   - as duas tags <link> do favicon no <head> (decisão 104, 14/11/2026).
 # Os ícones do site (favicon.ico, apple-touch-icon.png) não existem na tag: são
 # comparados com os arquivos de public/ deste checkout.
+# Previews protegidos (*.vercel.app): manda o cabeçalho x-vercel-protection-bypass com
+# VERCEL_AUTOMATION_BYPASS_SECRET (do ambiente ou do .env.local; decisão 105). Em outros
+# domínios o segredo nunca é enviado.
 # uso: verify.sh BASE_URL
 B="$1"; fail=0
+BYPASS="${VERCEL_AUTOMATION_BYPASS_SECRET:-$(grep -s '^VERCEL_AUTOMATION_BYPASS_SECRET=' .env.local | cut -d= -f2- | tr -d '\r')}"
+case "$B" in https://*.vercel.app|https://*.vercel.app/) ;; *) BYPASS="" ;; esac
+curl() { if [ -n "$BYPASS" ]; then command curl -H "x-vercel-protection-bypass: $BYPASS" "$@"; else command curl "$@"; fi; }
+[ -n "$BYPASS" ] && echo "     (preview protegido: usando o bypass de automação)"
 LINK_EQUIPE='  <p style="margin: 8px 0 0; text-align: center; font-size: 12px;"><a href="/painel" style="color: var(--gray-text); text-decoration: none;">Acesso equipe</a></p>'
 LINK_ICON='  <link rel="icon" href="/favicon.ico" sizes="any" />'
 LINK_APPLE='  <link rel="apple-touch-icon" href="/apple-touch-icon.png" />'

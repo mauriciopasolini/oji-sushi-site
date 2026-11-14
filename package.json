@@ -20,7 +20,8 @@
     "configurar-google": "node scripts/configurar-google.mjs",
     "testar-planilha": "node --env-file=.env.local --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/testar-planilha.mjs",
     "test:integracao": "node --env-file=.env.local node_modules/vitest/vitest.mjs run -c vitest.integracao.config.ts",
-    "vercel:segredos": "node scripts/enviar-segredos-vercel.mjs"
+    "vercel:segredos": "node scripts/enviar-segredos-vercel.mjs",
+    "vercel:bypass-env": "node scripts/vercel-bypass-env.mjs"
   },
   "dependencies": {
     "@date-fns/tz": "1.5.0",
