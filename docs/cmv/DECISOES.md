@@ -305,3 +305,13 @@ As compras são concentradas na segunda (para seg–qui) e na sexta (para sex–
      - `npm run vercel:bypass-env` lê o segredo pela CLI logada e grava `VERCEL_AUTOMATION_BYPASS_SECRET` no `.env.local`, sem imprimir o valor. O segredo não vai para o Git nem para o cliente.
      - O `verificar-landing.sh` manda o cabeçalho `x-vercel-protection-bypass` **só** quando a URL é `https://*.vercel.app`; contra o domínio de produção ele nunca é enviado.
      - Preview manual (quando o deploy pelo Git não dispara): `vercel deploy` a partir de uma cópia limpa do commit (`git archive <sha> | tar -x`, mais `.vercel/project.json`), para não subir arquivos locais fora do Git.
+
+## 2026-11-15 — Itens de contagem e referências
+
+106. **Referências em `docs/cmv/referencias/`; PDFs fora do Git.**
+     - O repositório `mauriciopasolini/oji-sushi-site` no GitHub é **público**. Por isso `docs/cmv/referencias/*.pdf` está no `.gitignore` (o `DRE_Gerencial_Outubro2026.pdf` tem dados financeiros e fica só na máquina). A `lista-contagem-estoque.md` vai para o repositório, com autorização do Mauricio.
+107. **Cadastro dos 30 itens de contagem** a partir de `docs/cmv/referencias/lista-contagem-estoque.md` (v1), direto no banco compartilhado, numa transação, com a auditoria atribuída ao Mauricio (admin). Nenhuma contagem criada.
+     - Ordem 1 a 30 igual à lista (rota física); nomes e categorias iguais; custo de referência em branco; todos ativos.
+     - **Unidades mapeadas para as que o banco aceita** (`kg`, `un`, `cx`, `pct`, `l`), sem migração: pacote → `pct`, caixa → `cx`, kg → `kg`; galão, balde/bisnaga, lata, fardo/rolo e unidade → `un`.
+     - Quando a unidade é `un` e a embalagem não está no nome, ela entra entre parênteses: "Cream cheese (bisnaga)", "Papel toalha (fardo)", "Óleo de soja (galão)". Shoyu, Tarê e Molho de pimenta 5L já dizem o tamanho.
+     - A coluna "Como contar" da lista não tem campo no cadastro; continua só na lista.

@@ -1,6 +1,6 @@
 # Status do módulo de CMV
 
-Atualizado em **14/11/2026**. Branch de trabalho: `cmv/etapa-1`. Produção: `main`, publicada em https://www.ojisushi.com.br.
+Atualizado em **15/11/2026**. Branch de trabalho: `cmv/etapa-1`. Produção: `main`, publicada em https://www.ojisushi.com.br.
 
 ## 1. Pronto e em produção
 
@@ -36,7 +36,7 @@ O último merge na `main` é o `3ac1fcc` (favicon e ícones, 14/11/2026). A `cmv
 - `/painel/cmv/contagem` (gestor e admin) e `/painel/cmv/contagem/itens` (admin): cadastro de itens, contagem no celular com rascunho automático e finalização. A contagem finalizada entra no CMV real (estoque inicial/final).
 - Ajustes: tipo de documento e forma de pagamento padrão por fornecedor (preenchem o lançamento); correção de tipo/pagamento direto na conferência ("ajuste na conferência", sem reabrir a conferência); reabertura de contagem confirmada; rascunho fora de qualquer cálculo (`estoqueDoMes`, com teste).
 - **As migrações `20261112090000_etapa6_fornecedores_contagem.sql` e `20261113090000_padroes_fornecedor_ajuste_conferencia.sql` já estão aplicadas no banco compartilhado** (são aditivas; decisões 99 e 100).
-- **Prazo:** os itens de contagem precisam estar cadastrados antes de 30/11 (primeira contagem real).
+- **Itens de contagem cadastrados em 15/11/2026** (30 itens da `docs/cmv/referencias/lista-contagem-estoque.md`, decisão 107), sem custo de referência e sem nenhuma contagem. Antes da 1ª contagem real (01/12, fechamento de 30/11): confirmar as unidades de compra, preencher os custos e fazer o ensaio com o Douglas (rascunho, sem finalizar).
 - Conferido em produção depois do merge: `verificar-landing.sh` passou (landing byte a byte + link "Acesso equipe"; arquivos internos dão 404; `noindex` no painel), e todas as rotas do painel, inclusive as novas, redirecionam para o login. **Falta o Mauricio abrir logado** Painel, Conferência, Fornecedores e Contagem em produção: o Claude não tem acesso de login e não conseguiu confirmar por fora que o build novo já está no ar.
 
 **Dados reais no banco**
@@ -87,6 +87,7 @@ Nada.
   - o estoque no CMV real;
   - a migração aplicada antes do merge.
 - **100 a 103:** padrões de documento e pagamento por fornecedor, ajuste na conferência, reabertura de contagem e rascunho fora dos cálculos.
+- **106 e 107:** PDFs de referência fora do Git (repositório público) e cadastro dos 30 itens de contagem.
 
 ## 5. Como retomar
 
