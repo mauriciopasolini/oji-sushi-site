@@ -1,7 +1,7 @@
 "use client";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { formatarQuantidade, tentarLerQuantidade, totalDaContagem, valorDoItem } from "@/lib/cmv/contagem";
+import { erroFechamento, fechamentoPadrao, formatarQuantidade, opcoesFechamento, tentarLerQuantidade, totalDaContagem, valorDoItem } from "@/lib/cmv/contagem";
 import { centavos, formatarBRL } from "@/lib/cmv/dinheiro";
 import { reabrirContagem, salvarContagem } from "./actions";
 
@@ -17,7 +17,10 @@ export type ItemForm = {
 };
 
 type Props = {
+  /** Mês da página (o fechamento que está sendo exibido). */
   competencia: string;
+  /** Competências ("AAAA-MM-01") dos meses abertos, para o "Fechamento de". */
+  mesesAbertos: string[];
   contagemId: string | null;
   finalizada: boolean;
   bloqueio: string | null;
@@ -38,11 +41,18 @@ const tentarCentavos = (s: string) => {
 };
 const hora = (ts: string) => new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" }).format(new Date(ts));
 const AUTOSALVAR_MS = 2500;
+const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
+const nomeMes = (comp: string) => `${MESES[Number(comp.slice(5, 7)) - 1]}/${comp.slice(0, 4)}`;
 
 /** Contagem pensada para o celular: um cartão por item, total ao vivo, rascunho salvo sozinho. */
 export function FormContagem(p: Props) {
   const router = useRouter();
   const [data, setData] = useState(p.dataInicial);
+  const [contagemId, setContagemId] = useState(p.contagemId);
+  // Contagem existente: o mês dela. Nova: o padrão pela data (dias 1 e 2 → mês anterior).
+  const [fechamento, setFechamento] = useState(() => (p.contagemId ? p.competencia : fechamentoPadrao(p.dataInicial)));
+  // O admin escolheu o mês à mão: mudar a data não muda mais o fechamento (se continuar válido).
+  const [fechamentoManual, setFechamentoManual] = useState(() => Boolean(p.contagemId) && p.competencia !== fechamentoPadrao(p.dataInicial));
   const [valores, setValores] = useState(() => new Map(p.itens.map((i) => [i.id, { quantidade: i.quantidade, custo: i.custo }])));
   const [categoria, setCategoria] = useState("");
   const [soFaltando, setSoFaltando] = useState(false);
@@ -57,6 +67,12 @@ export function FormContagem(p: Props) {
   const versao = useRef(0);
   const campos = useRef(new Map<string, HTMLInputElement>());
   const somenteLeitura = p.finalizada || Boolean(p.bloqueio);
+  const padrao = fechamentoPadrao(data);
+  const opcoes = opcoesFechamento(data);
+  // Como no banco: fora do padrão só o admin, a não ser que nada tenha mudado num rascunho já gravado assim.
+  const inalterada = Boolean(p.contagemId) && fechamento === p.competencia && data === p.dataInicial;
+  const erroMes =
+    erroFechamento(fechamento, data, p.ehAdmin || inalterada) ?? (p.mesesAbertos.includes(fechamento) ? null : `O mês ${nomeMes(fechamento)} não está aberto no sistema.`);
 
   const linhas = useMemo(
     () =>
@@ -93,26 +109,29 @@ export function FormContagem(p: Props) {
         // Ao finalizar, item em branco vira 0 (o usuário confirmou).
         return { itemId: i.id, quantidade: finalizar && !v.quantidade.trim() ? "0" : v.quantidade, custo: v.custo };
       });
-      const r = await salvarContagem({ competencia: p.competencia, data, linhas: enviadas, finalizar });
+      const r = await salvarContagem({ fechamento, contagemId, data, linhas: enviadas, finalizar });
       setSalvando(false);
       if (!r.ok) {
         setErro(r.erro);
         return false;
       }
+      setContagemId(r.dados.id);
       setSalvoEm(r.dados.salvoEm);
       if (minha === versao.current) setSujo(false);
-      if (finalizar) router.refresh();
+      // Foi para outro mês de fechamento: abre a página desse mês.
+      if (r.dados.fechamento !== p.competencia) router.replace(`/painel/cmv/contagem?mes=${r.dados.fechamento.slice(0, 7)}`);
+      else if (finalizar) router.refresh();
       return true;
     },
-    [somenteLeitura, p.itens, p.competencia, valores, data, router],
+    [somenteLeitura, p.itens, p.competencia, valores, data, fechamento, contagemId, router],
   );
 
   // Rascunho salvo sozinho, alguns segundos depois da última digitação.
   useEffect(() => {
-    if (!sujo || somenteLeitura || invalidos.length) return;
+    if (!sujo || somenteLeitura || invalidos.length || erroMes) return;
     const t = setTimeout(() => salvar(false), AUTOSALVAR_MS);
     return () => clearTimeout(t);
-  }, [sujo, valores, data, somenteLeitura, invalidos.length, salvar]);
+  }, [sujo, valores, data, somenteLeitura, invalidos.length, erroMes, salvar]);
 
   // Avisa antes de sair com alterações não salvas.
   useEffect(() => {
@@ -144,7 +163,10 @@ export function FormContagem(p: Props) {
       {p.finalizada && (
         <div className="space-y-2 rounded-2xl border border-green-200 bg-green-50 p-4 text-green-950">
           <p className="font-semibold">Contagem finalizada.</p>
-          <p className="text-sm">Ela é o estoque final deste mês e o estoque inicial do mês seguinte.</p>
+          <p className="text-sm">
+            Feita em {data.slice(8, 10)}/{data.slice(5, 7)}/{data.slice(0, 4)}, fechamento de {nomeMes(p.competencia)}. Ela é o estoque final deste mês e o estoque inicial do
+            mês seguinte.
+          </p>
           {p.ehAdmin && !p.bloqueio && p.contagemId && (
             <>
               {!reabrindo ? (
@@ -189,11 +211,43 @@ export function FormContagem(p: Props) {
             max={p.hoje}
             disabled={somenteLeitura}
             onChange={(e) => {
-              setData(e.target.value);
+              const nova = e.target.value;
+              if (!nova) return;
+              setData(nova);
+              // Segue o padrão da data, salvo escolha manual do admin que continue válida.
+              if (!fechamentoManual || !opcoesFechamento(nova).includes(fechamento)) {
+                setFechamento(fechamentoPadrao(nova));
+                setFechamentoManual(false);
+              }
               setSujo(true);
+              setConfirmarFinal(false);
             }}
             className="rounded-lg border border-neutral-300 bg-white px-3 py-2 text-base disabled:bg-neutral-100"
           />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-sm text-neutral-600">Fechamento de</span>
+          {p.ehAdmin && !somenteLeitura && opcoes.length > 1 ? (
+            <select
+              value={fechamento}
+              onChange={(e) => {
+                setFechamento(e.target.value);
+                setFechamentoManual(e.target.value !== padrao);
+                setSujo(true);
+                setConfirmarFinal(false);
+              }}
+              className="rounded-lg border border-neutral-300 bg-white px-3 py-2 text-base capitalize"
+            >
+              {opcoes.map((m) => (
+                <option key={m} value={m} disabled={!p.mesesAbertos.includes(m)}>
+                  {nomeMes(m)}
+                  {m === padrao ? " (padrão)" : ""}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <span className="block rounded-lg border border-neutral-200 bg-neutral-100 px-3 py-2 text-base capitalize">{nomeMes(fechamento)}</span>
+          )}
         </label>
         <input
           type="search"
@@ -204,6 +258,14 @@ export function FormContagem(p: Props) {
           className="min-w-0 flex-1 rounded-lg border border-neutral-300 bg-white px-3 py-2 text-base"
         />
       </div>
+
+      {!somenteLeitura && (erroMes || fechamento !== p.competencia || fechamento !== padrao) && (
+        <p className={`rounded-xl px-3 py-2 text-sm ${erroMes ? "bg-red-50 text-red-800" : "bg-amber-50 text-amber-900"}`}>
+          {erroMes ??
+            (fechamento !== padrao ? `Fora do padrão: pela data, seria o fechamento de ${nomeMes(padrao)}. ` : "") +
+              (fechamento !== p.competencia ? `Ao salvar, esta contagem vai para o fechamento de ${nomeMes(fechamento)}.` : "")}
+        </p>
+      )}
 
       <div className="flex flex-wrap items-center gap-1.5">
         {[{ id: "", nome: "Todas" }, ...p.categorias].map((c) => (
@@ -309,7 +371,7 @@ export function FormContagem(p: Props) {
               <div className="flex gap-2">
                 <button
                   type="button"
-                  disabled={salvando || Boolean(invalidos.length)}
+                  disabled={salvando || Boolean(invalidos.length) || Boolean(erroMes)}
                   onClick={() => salvar(false)}
                   className="rounded-xl border border-neutral-300 px-3 py-2.5 text-sm font-semibold disabled:opacity-50"
                 >
@@ -317,7 +379,7 @@ export function FormContagem(p: Props) {
                 </button>
                 <button
                   type="button"
-                  disabled={salvando || Boolean(invalidos.length) || resumo.preenchidos === 0}
+                  disabled={salvando || Boolean(invalidos.length) || Boolean(erroMes) || resumo.preenchidos === 0}
                   onClick={() => setConfirmarFinal(true)}
                   className="rounded-xl bg-neutral-900 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
                 >
@@ -339,7 +401,7 @@ export function FormContagem(p: Props) {
                 Depois de finalizada, só o administrador pode reabrir.
               </p>
               <div className="flex gap-2">
-                <button type="button" disabled={salvando} onClick={() => salvar(true)} className="rounded-lg bg-neutral-900 px-3 py-2 font-semibold text-white disabled:opacity-50">
+                <button type="button" disabled={salvando || Boolean(erroMes)} onClick={() => salvar(true)} className="rounded-lg bg-neutral-900 px-3 py-2 font-semibold text-white disabled:opacity-50">
                   Confirmar e finalizar
                 </button>
                 <button type="button" onClick={() => setConfirmarFinal(false)} className="rounded-lg border border-neutral-300 px-3 py-2">

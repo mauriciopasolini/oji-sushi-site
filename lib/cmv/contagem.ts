@@ -2,6 +2,7 @@
 // Quantidade em MILÉSIMOS inteiros (numeric(12,3) no banco); custo em centavos.
 // valor = round(quantidade × custo, 2), igual à coluna gerada contagem_itens.valor.
 
+import { competenciaDe, type DataCivil, INICIO_SISTEMA, partes, somarMeses } from "./datas";
 import type { Centavos } from "./dinheiro";
 
 export type Milesimos = number;
@@ -110,4 +111,48 @@ export function custoSugerido(
     if (!melhor || h.data > melhor.data) melhor = h;
   }
   return melhor ? melhor.custo : custoReferencia;
+}
+
+// -----------------------------------------------------------------------------
+// "Fechamento de": mês de fechamento a que a contagem pertence (decisão 109).
+// As mesmas regras estão no banco (interno.fechamento_padrao e
+// interno.validar_fechamento_contagem); aqui servem à tela e à server action.
+// -----------------------------------------------------------------------------
+
+/** Dias do mês em que a contagem, por padrão, ainda fecha o mês anterior. */
+export const DIAS_FECHAMENTO_MES_ANTERIOR = 2;
+
+/**
+ * Mês de fechamento padrão para uma contagem feita na data civil `data` (São Paulo):
+ * o mês da data; nos dias 1 e 2, o mês anterior (contagem que passou da meia-noite
+ * ou foi finalizada na manhã seguinte). Ex.: 30/11 → nov · 01/12 → nov · 15/12 → dez.
+ */
+export function fechamentoPadrao(data: DataCivil): DataCivil {
+  const comp = competenciaDe(data);
+  return partes(data).dia <= DIAS_FECHAMENTO_MES_ANTERIOR ? somarMeses(comp, -1) : comp;
+}
+
+/** Meses que podem receber uma contagem feita em `data`: o anterior e o da data (a partir do início do sistema). */
+export function opcoesFechamento(data: DataCivil): DataCivil[] {
+  const comp = competenciaDe(data);
+  return [somarMeses(comp, -1), comp].filter((m) => m >= INICIO_SISTEMA);
+}
+
+/** Erro (em português) se o par fechamento/data não for permitido para o papel; null se estiver ok. */
+export function erroFechamento(fechamento: DataCivil, data: DataCivil, ehAdmin: boolean): string | null {
+  const nome = (c: DataCivil) => `${String(partes(c).mes).padStart(2, "0")}/${partes(c).ano}`;
+  if (fechamento < INICIO_SISTEMA) return `O sistema começa em ${nome(INICIO_SISTEMA)}: não há fechamento antes disso.`;
+  if (!opcoesFechamento(data).includes(fechamento)) {
+    const [d, m, a] = [data.slice(8, 10), data.slice(5, 7), data.slice(0, 4)];
+    return `Uma contagem feita em ${d}/${m}/${a} só pode ser o fechamento de ${opcoesFechamento(data).map(nome).join(" ou ")}.`;
+  }
+  if (!ehAdmin && fechamento !== fechamentoPadrao(data)) {
+    return `Pela data, esta contagem é o fechamento de ${nome(fechamentoPadrao(data))}. Só o administrador pode escolher outro mês.`;
+  }
+  return null;
+}
+
+/** O aviso "contagem do mês anterior não finalizada" só faz sentido se o mês anterior estiver no sistema. */
+export function mesAnteriorNoSistema(competencia: DataCivil): boolean {
+  return somarMeses(competencia, -1) >= INICIO_SISTEMA;
 }

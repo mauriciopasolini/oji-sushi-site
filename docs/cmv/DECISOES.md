@@ -315,3 +315,21 @@ As compras são concentradas na segunda (para seg–qui) e na sexta (para sex–
      - **Unidades mapeadas para as que o banco aceita** (`kg`, `un`, `cx`, `pct`, `l`), sem migração: pacote → `pct`, caixa → `cx`, kg → `kg`; galão, balde/bisnaga, lata, fardo/rolo e unidade → `un`.
      - Quando a unidade é `un` e a embalagem não está no nome, ela entra entre parênteses: "Cream cheese (bisnaga)", "Papel toalha (fardo)", "Óleo de soja (galão)". Shoyu, Tarê e Molho de pimenta 5L já dizem o tamanho.
      - A coluna "Como contar" da lista não tem campo no cadastro; continua só na lista.
+
+## 2026-11-15 — Contagem: início do sistema e "Fechamento de" (pedido do Mauricio)
+
+108. **Nada de aviso nem contagem antes do início do sistema (11/2026).**
+     - `INICIO_SISTEMA = "2026-11-01"` em `lib/cmv/datas.ts`. O mês 10/2026 existe na tabela `meses`, mas está fora do sistema.
+     - O aviso "a contagem de fechamento de X ainda não foi finalizada" só aparece se o mês anterior for igual ou posterior ao início (`mesAnteriorNoSistema`). Em novembro ele não aparece mais.
+     - A tela de contagem não navega para antes de novembro/2026 (sem seta ←). Se alguém abrir pela URL, vê "O sistema começa em novembro de 2026". O "Estoque inicial" de novembro mostra "início do sistema: sem contagem anterior".
+109. **"Fechamento de": a data da contagem fica separada do mês de fechamento.**
+     - `contagens.mes_id` continua sendo o mês de fechamento, e o estoque final de um mês continua sendo a contagem finalizada com esse `mes_id` (nada muda em `carregarPainel` nem em `estoqueDoMes`). O que muda é como o mês é escolhido e protegido.
+     - **Padrão** (`fechamentoPadrao` em `lib/cmv/contagem.ts` e `interno.fechamento_padrao` no banco): o mês da data. Nos dias 1 e 2, o mês anterior, para a contagem que passou da meia-noite ou foi finalizada na manhã seguinte. Exemplos: 30/11 às 23h → novembro; 01/12 às 00h30 → novembro; 15/12 → dezembro. A data é a civil de São Paulo.
+     - **Faixa permitida, para todos:** o mês da data ou o anterior, nunca antes de 11/2026. Isso cobre a contagem atrasada (admin põe a de 05/12 em novembro) e a exceção do dia 1 (admin põe a de 01/12 em dezembro).
+     - **Fora do padrão, só o admin.** O gestor vê o campo só para leitura, e ele acompanha a data. No banco (`interno.validar_fechamento_contagem`, no trigger `tg_contagens_regras`), a regra vale ao criar e ao mudar a data ou o mês. Assim o gestor continua lançando itens e finaliza um rascunho que o admin pôs fora do padrão.
+     - **Rascunho pode mudar de mês** (antes `mes_id` era travado), com auditoria `update` e motivo "mês de fechamento alterado". Finalizada não muda nem a data nem o mês. Uma contagem por mês (unique) continua.
+     - **Tela:** sem mês na URL, abre o mês de `fechamentoPadrao(hoje)` (em 01/12, novembro). Contagem nova começa com a data de hoje (antes era limitada ao último dia do mês da página). Se o fechamento escolhido não for o mês da página, um aviso explica, e ao salvar a tela vai para o mês certo. Se o mês de destino já tiver contagem: "Já existe uma contagem de fechamento de MM/AAAA".
+     - **Server action:** `salvarContagem` recebe `fechamento` e `contagemId` (o formulário guarda o id depois do primeiro salvamento) e repete as regras do banco.
+     - **Migração `20261116090000_contagem_fechamento_de.sql`, aplicada no banco compartilhado antes do merge** (como nas decisões 99 e 100). Ela é aditiva e não havia contagens gravadas. O código que está em produção continua compatível: ele grava a data dentro do mês da página, e isso sempre cai no padrão, exceto ao abrir dezembro nos dias 1 e 2, quando o banco recusa com mensagem clara em vez de gravar no mês errado.
+     - **Testes:** 7 novos de cálculo (169 no total) e 12 novos de banco (107). O bloco de contagem do `testar-rls` passou a usar meses de teste de 2020, criados dentro da transação desfeita, com datas fixas no passado. Antes usava dezembro/2026 com a data de ontem, o que a regra nova recusa e que colidiria com contagens reais.
+

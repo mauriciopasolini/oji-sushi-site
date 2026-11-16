@@ -1,7 +1,7 @@
 "use server";
 import { revalidatePath } from "next/cache";
-import { lerQuantidade, quantidadeParaDecimal, UNIDADES } from "@/lib/cmv/contagem";
-import { hojeSP } from "@/lib/cmv/datas";
+import { erroFechamento, lerQuantidade, quantidadeParaDecimal, UNIDADES } from "@/lib/cmv/contagem";
+import { competenciaDe, hojeSP, somarMeses } from "@/lib/cmv/datas";
 import { centavos, paraDecimal } from "@/lib/cmv/dinheiro";
 import { getSessao } from "@/lib/cmv/sessao";
 import { RE_UUID } from "@/lib/cmv/tipos";
@@ -21,17 +21,32 @@ function mensagem(msg: string) {
 
 export type LinhaEnviada = { itemId: string; quantidade: string; custo: string };
 
+const mesAno = (comp: string) => `${comp.slice(5, 7)}/${comp.slice(0, 4)}`;
+
 /**
- * Grava a contagem de fechamento do mês (cria se não existir). Itens sem quantidade
- * ficam fora (e são removidos se estavam gravados). Com `finalizar`, todos os itens
- * enviados precisam de quantidade, e quem tem quantidade > 0 precisa de custo.
+ * Grava a contagem (cria se não existir) no mês de fechamento escolhido ("Fechamento de").
+ * Com `contagemId`, atualiza aquele rascunho, inclusive movendo-o de mês. Itens sem
+ * quantidade ficam fora (e são removidos se estavam gravados). Com `finalizar`, todos os
+ * itens enviados precisam de quantidade, e quem tem quantidade > 0 precisa de custo.
  */
-export async function salvarContagem(p: { competencia: string; data: string; linhas: LinhaEnviada[]; finalizar: boolean }): Promise<Resultado<{ id: string; salvoEm: string }>> {
+export async function salvarContagem(p: {
+  fechamento: string;
+  contagemId: string | null;
+  data: string;
+  linhas: LinhaEnviada[];
+  finalizar: boolean;
+}): Promise<Resultado<{ id: string; salvoEm: string; fechamento: string }>> {
   const sessao = await getSessao();
   if (!sessao?.perfil?.ativo) return { ok: false, erro: "Sessão expirada. Entre novamente." };
-  if (!RE_COMP.test(p.competencia ?? "")) return { ok: false, erro: "Mês inválido." };
+  if (!RE_COMP.test(p.fechamento ?? "")) return { ok: false, erro: "Mês de fechamento inválido." };
   if (!RE_DATA.test(p.data ?? "")) return { ok: false, erro: "Data da contagem inválida." };
-  if (p.data > hojeSP()) return { ok: false, erro: "A data da contagem não pode ser no futuro." };
+  const hoje = hojeSP();
+  if (p.data > hoje) return { ok: false, erro: "A data da contagem não pode ser no futuro." };
+  const ehAdmin = sessao.perfil.papel === "admin";
+  // Faixa permitida (mês da data ou anterior) vale para todos; o "só o padrão" do gestor, mais abaixo.
+  const erroF = erroFechamento(p.fechamento, p.data, true);
+  if (erroF) return { ok: false, erro: erroF };
+  if (p.contagemId !== null && !RE_UUID.test(p.contagemId ?? "")) return { ok: false, erro: "Contagem inválida." };
   if (!Array.isArray(p.linhas) || p.linhas.length > 2000) return { ok: false, erro: "Itens inválidos." };
 
   const gravar: { item_id: string; quantidade: string; custo_unitario: string }[] = [];
@@ -63,19 +78,36 @@ export async function salvarContagem(p: { competencia: string; data: string; lin
   if (p.finalizar && semCusto.length) return { ok: false, erro: `${semCusto.length} item(ns) com quantidade e sem custo unitário.` };
 
   const supabase = await createClient();
-  const { data: mes } = await supabase.from("meses").select("id, status").eq("competencia", p.competencia).maybeSingle();
-  if (!mes) return { ok: false, erro: "Este mês ainda não existe no sistema." };
-  if (mes.status === "fechado") return { ok: false, erro: "O mês está fechado: a contagem não pode mais ser alterada." };
+  const { data: mes } = await supabase.from("meses").select("id, status").eq("competencia", p.fechamento).maybeSingle();
+  if (!mes) return { ok: false, erro: `O mês ${mesAno(p.fechamento)} ainda não existe no sistema.` };
+  if (mes.status === "fechado") return { ok: false, erro: `O mês ${mesAno(p.fechamento)} está fechado: a contagem não pode mais ser alterada.` };
 
-  let { data: cont } = await supabase.from("contagens").select("id, status, data").eq("mes_id", mes.id).eq("tipo", "fechamento").maybeSingle();
-  if (cont?.status === "finalizada") return { ok: false, erro: "A contagem já foi finalizada. Peça ao administrador para reabri-la." };
-  if (!cont) {
-    const ins = await supabase.from("contagens").insert({ mes_id: mes.id, data: p.data }).select("id, status, data").single();
+  // Outra contagem já ocupando o mês de fechamento (uma por mês).
+  const { data: doMes } = await supabase.from("contagens").select("id").eq("mes_id", mes.id).eq("tipo", "fechamento").maybeSingle();
+  if (doMes && doMes.id !== p.contagemId) {
+    return { ok: false, erro: `Já existe uma contagem de fechamento de ${mesAno(p.fechamento)}. Abra esse mês para continuá-la.` };
+  }
+
+  let cont: { id: string; status: string; data: string; mes_id: string } | null = null;
+  if (p.contagemId) {
+    const { data } = await supabase.from("contagens").select("id, status, data, mes_id").eq("id", p.contagemId).maybeSingle();
+    if (!data) return { ok: false, erro: "Contagem não encontrada. Recarregue a página." };
+    cont = data;
+    if (cont.status === "finalizada") return { ok: false, erro: "A contagem já foi finalizada. Peça ao administrador para reabri-la." };
+    if (cont.data !== p.data || cont.mes_id !== mes.id) {
+      // Como no banco: o gestor só usa o padrão quando muda a data ou o mês.
+      const erroPapel = erroFechamento(p.fechamento, p.data, ehAdmin);
+      if (erroPapel) return { ok: false, erro: erroPapel };
+      const up = await supabase.from("contagens").update({ data: p.data, mes_id: mes.id }).eq("id", cont.id);
+      if (up.error) return { ok: false, erro: mensagem(up.error.message) };
+    }
+  } else {
+    if (p.fechamento < somarMeses(competenciaDe(hoje), -1)) return { ok: false, erro: "Contagens só podem ser iniciadas para o mês atual ou o anterior." };
+    const erroPapel = erroFechamento(p.fechamento, p.data, ehAdmin);
+    if (erroPapel) return { ok: false, erro: erroPapel };
+    const ins = await supabase.from("contagens").insert({ mes_id: mes.id, data: p.data }).select("id, status, data, mes_id").single();
     if (ins.error) return { ok: false, erro: mensagem(ins.error.message) };
     cont = ins.data;
-  } else if (cont.data !== p.data) {
-    const up = await supabase.from("contagens").update({ data: p.data }).eq("id", cont.id);
-    if (up.error) return { ok: false, erro: mensagem(up.error.message) };
   }
 
   if (gravar.length) {
@@ -97,7 +129,7 @@ export async function salvarContagem(p: { competencia: string; data: string; lin
   }
 
   revalidatePath("/painel/cmv", "layout");
-  return { ok: true, dados: { id: cont.id, salvoEm: new Date().toISOString() } };
+  return { ok: true, dados: { id: cont.id, salvoEm: new Date().toISOString(), fechamento: p.fechamento } };
 }
 
 /** Admin: reabre a contagem finalizada (motivo obrigatório, auditado no banco). */

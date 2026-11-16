@@ -47,7 +47,10 @@ O último merge na `main` é o `3ac1fcc` (favicon e ícones, 14/11/2026). A `cmv
 
 ## 2. Só na branch, aguardando merge
 
-Nada.
+**Ajustes da contagem (15/11/2026, decisões 108 e 109)**, aguardando o OK do Mauricio no preview:
+- Sem aviso de "contagem não finalizada" para meses anteriores a 11/2026, e sem navegação para eles.
+- Campo "Fechamento de", com padrão pela data (dias 1 e 2 → mês anterior). Só o admin troca. O rascunho pode mudar de mês, com auditoria.
+- A migração `20261116090000_contagem_fechamento_de.sql` **já está aplicada** no banco compartilhado, e o código em produção é compatível com ela.
 
 ## 3. Pendências abertas
 
@@ -88,6 +91,7 @@ Nada.
   - a migração aplicada antes do merge.
 - **100 a 103:** padrões de documento e pagamento por fornecedor, ajuste na conferência, reabertura de contagem e rascunho fora dos cálculos.
 - **106 e 107:** PDFs de referência fora do Git (repositório público) e cadastro dos 30 itens de contagem.
+- **108 e 109:** início do sistema (11/2026) na contagem e campo "Fechamento de", com a regra no banco.
 
 ## 5. Como retomar
 
@@ -107,9 +111,9 @@ Na Vercel (Production e Preview) estão todas, menos `SUPABASE_DB_URL`. Para env
 ```sh
 git checkout cmv/etapa-1 && git pull
 npm install
-npm run db:status          # migrações aplicadas (10, até 20261113090000_padroes_fornecedor_ajuste_conferencia.sql)
-npm test                   # 162 testes de cálculo
-npm run db:test-rls        # 95 testes de regras no banco (transação desfeita: não grava nada)
+npm run db:status          # migrações aplicadas (11, até 20261116090000_contagem_fechamento_de.sql)
+npm test                   # 169 testes de cálculo
+npm run db:test-rls        # 107 testes de regras no banco (transação desfeita: não grava nada)
 npm run typecheck
 npm run build && npx next start -p 3123   # servidor local
 sh scripts/verificar-landing.sh http://localhost:3123
