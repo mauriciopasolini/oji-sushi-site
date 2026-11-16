@@ -332,4 +332,16 @@ As compras são concentradas na segunda (para seg–qui) e na sexta (para sex–
      - **Server action:** `salvarContagem` recebe `fechamento` e `contagemId` (o formulário guarda o id depois do primeiro salvamento) e repete as regras do banco.
      - **Migração `20261116090000_contagem_fechamento_de.sql`, aplicada no banco compartilhado antes do merge** (como nas decisões 99 e 100). Ela é aditiva e não havia contagens gravadas. O código que está em produção continua compatível: ele grava a data dentro do mês da página, e isso sempre cai no padrão, exceto ao abrir dezembro nos dias 1 e 2, quando o banco recusa com mensagem clara em vez de gravar no mês errado.
      - **Testes:** 7 novos de cálculo (169 no total) e 12 novos de banco (107). O bloco de contagem do `testar-rls` passou a usar meses de teste de 2020, criados dentro da transação desfeita, com datas fixas no passado. Antes usava dezembro/2026 com a data de ontem, o que a regra nova recusa e que colidiria com contagens reais.
+     - Título da tela: "Fechamento de novembro/2026" (minúsculo, com barra), pedido do Mauricio depois do teste no preview.
+
+## 2026-11-15 — Corte do fechamento de novembro/2026 (decisão do Mauricio)
+
+110. **Contagem de fechamento de novembro no domingo 29/11, após o expediente.**
+     - Data 29/11 → "Fechamento de" = novembro pelo padrão (decisão 109); ninguém precisa trocar o mês.
+     - **Compras recebidas na segunda 30/11 entram em dezembro.** São lançadas com data **01/12** e observação **"recebida em 30/11 — corte de estoque, competência dezembro"**.
+       - Motivo: segunda é o dia da grande reposição e quase tudo é consumido a partir de terça. Assim novembro fecha sem a compra de segunda, e dezembro começa com um estoque inicial coerente com as compras que vão consumi-lo.
+     - **Data futura não é aceita na nota** (`max` no campo e checagem em `notas/actions.ts`: "A data da nota não pode ser no futuro"). Por isso o Douglas lança essas notas **na terça 01/12**. A regra de datas futuras não foi alterada.
+     - Na conferência, a data dessas notas (01/12) difere da data impressa no documento (30/11). A observação explica, e a nota não deve ser marcada como divergente por isso.
+     - **Novembro fecha como CMV de compras.** O CMV real começa em dezembro (estoque inicial = contagem de 29/11; estoque final = contagem de fechamento de dezembro). Não haverá "estoque inicial estimado" para novembro.
+     - Efeito conhecido e aceito: as vendas da segunda 30/11 ficam em novembro, e o consumo desse dia sai do estoque contado em 29/11, ou seja, entra no CMV de dezembro. É um dia de distorção pequena, e é o preço de contar com a loja fechada.
 

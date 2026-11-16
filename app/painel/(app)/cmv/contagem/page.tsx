@@ -109,8 +109,8 @@ export default async function ContagemPage({ searchParams }: { searchParams: Pro
         )}
         <div className="text-center">
           <h1 className="text-xl font-bold">Contagem de estoque</h1>
-          <p className="text-sm text-neutral-600 capitalize">
-            Fechamento de {MESES[m - 1]} {ano}
+          <p className="text-sm text-neutral-600">
+            Fechamento de {MESES[m - 1]}/{ano}
           </p>
         </div>
         {competencia < competenciaDe(hoje) ? (

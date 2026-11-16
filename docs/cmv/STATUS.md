@@ -36,7 +36,7 @@ O último merge na `main` é o `3ac1fcc` (favicon e ícones, 14/11/2026). A `cmv
 - `/painel/cmv/contagem` (gestor e admin) e `/painel/cmv/contagem/itens` (admin): cadastro de itens, contagem no celular com rascunho automático e finalização. A contagem finalizada entra no CMV real (estoque inicial/final).
 - Ajustes: tipo de documento e forma de pagamento padrão por fornecedor (preenchem o lançamento); correção de tipo/pagamento direto na conferência ("ajuste na conferência", sem reabrir a conferência); reabertura de contagem confirmada; rascunho fora de qualquer cálculo (`estoqueDoMes`, com teste).
 - **As migrações `20261112090000_etapa6_fornecedores_contagem.sql` e `20261113090000_padroes_fornecedor_ajuste_conferencia.sql` já estão aplicadas no banco compartilhado** (são aditivas; decisões 99 e 100).
-- **Itens de contagem cadastrados em 15/11/2026** (30 itens da `docs/cmv/referencias/lista-contagem-estoque.md`, decisão 107), sem custo de referência e sem nenhuma contagem. Antes da 1ª contagem real (01/12, fechamento de 30/11): confirmar as unidades de compra, preencher os custos e fazer o ensaio com o Douglas (rascunho, sem finalizar).
+- **Itens de contagem cadastrados em 15/11/2026** (30 itens da `docs/cmv/referencias/lista-contagem-estoque.md`, decisão 107), sem custo de referência e sem nenhuma contagem. Antes da 1ª contagem real (domingo 29/11, decisão 110): confirmar as unidades de compra, preencher os custos e fazer o ensaio com o Douglas (rascunho, sem finalizar).
 - Conferido em produção depois do merge: `verificar-landing.sh` passou (landing byte a byte + link "Acesso equipe"; arquivos internos dão 404; `noindex` no painel), e todas as rotas do painel, inclusive as novas, redirecionam para o login. **Falta o Mauricio abrir logado** Painel, Conferência, Fornecedores e Contagem em produção: o Claude não tem acesso de login e não conseguiu confirmar por fora que o build novo já está no ar.
 
 **Dados reais no banco**
@@ -52,6 +52,12 @@ O último merge na `main` é o `3ac1fcc` (favicon e ícones, 14/11/2026). A `cmv
 - Campo "Fechamento de", com padrão pela data (dias 1 e 2 → mês anterior). Só o admin troca. O rascunho pode mudar de mês, com auditoria.
 - A migração `20261116090000_contagem_fechamento_de.sql` **já está aplicada** no banco compartilhado, e o código em produção é compatível com ela.
 
+## Corte do fechamento de novembro/2026 (decisão 110)
+
+- **Domingo 29/11, após o expediente:** contagem de fechamento de novembro (data 29/11 → "Fechamento de" novembro, sem troca).
+- **Compras recebidas na segunda 30/11 vão para dezembro:** o Douglas lança **na terça 01/12**, com data 01/12 e observação "recebida em 30/11 — corte de estoque, competência dezembro". Data futura não é aceita na nota.
+- Novembro fecha com o CMV de compras; o CMV real começa em dezembro. Não há estoque inicial estimado.
+
 ## 3. Pendências abertas
 
 | # | Pendência | Situação / o que se sabe |
@@ -63,7 +69,7 @@ O último merge na `main` é o `3ac1fcc` (favicon e ícones, 14/11/2026). A `cmv
 | 5 | **Backup semanal** | Não iniciado. Definir o que copiar (banco e bucket `notas`), para onde e quem roda. O Supabase CLI não roda nesta máquina (Smart App Control), então o backup deve usar `pg_dump`/biblioteca `postgres` ou um agendamento na nuvem. |
 | 6 | **Banco separado para o preview** | Não iniciado. Hoje preview e produção usam o **mesmo** Supabase (`zjmzujzgwgkplghszuyi`): o que se lança no preview vai para o banco real e as migrações valem para os dois na hora em que são aplicadas. |
 | 7 | **Cores da coluna Total em Vendas** | ✅ **Concluída hoje** e em produção (decisão 81). Falta só ver num celular de verdade o comportamento ao tocar. |
-| 8 | **Etapa 6: conferência, fornecedores e contagem** | ✅ Em produção (merge `46d0e32`). A fazer: o Mauricio confere as telas logado em produção e cadastra os itens de contagem; a 1ª contagem real é em 30/11/2026. As 39 notas lançadas como NF-e/caixa podem ser corrigidas na conferência. |
+| 8 | **Etapa 6: conferência, fornecedores e contagem** | ✅ Em produção (merge `46d0e32`). A fazer: o Mauricio confere as telas logado em produção e cadastra os itens de contagem; a 1ª contagem real é no domingo 29/11/2026 (decisão 110). As 39 notas lançadas como NF-e/caixa podem ser corrigidas na conferência. |
 | 9 | **Etapa 7: fechamento do mês e PDF/Excel** | Checklist do fechamento: zero compras aguardando nota fiscal ou uma justificativa por pendente (o banco já recusa fechar sem isso: decisão 86). Incluir no relatório a tabela "CMV por semana" (`calcularCmvSemanas`, decisão 89). |
 | 10 | **Etapa 8: revisão final e `docs/cmv/OPERACAO.md`** | Também: tela de configurações (Etapa 9 do briefing). A mescla de fornecedores saiu na Etapa 6. |
 | 11 | **`theme-color` do painel** | Continua `#111111` (barra de status do atalho "Oji CMV" fica grafite). O manifest tem `#E8321A`; trocar a tag se o Mauricio quiser a barra vermelha. |
@@ -92,6 +98,7 @@ O último merge na `main` é o `3ac1fcc` (favicon e ícones, 14/11/2026). A `cmv
 - **100 a 103:** padrões de documento e pagamento por fornecedor, ajuste na conferência, reabertura de contagem e rascunho fora dos cálculos.
 - **106 e 107:** PDFs de referência fora do Git (repositório público) e cadastro dos 30 itens de contagem.
 - **108 e 109:** início do sistema (11/2026) na contagem e campo "Fechamento de", com a regra no banco.
+- **110:** corte de novembro: contagem em 29/11 e compras de 30/11 lançadas em 01/12.
 
 ## 5. Como retomar
 
