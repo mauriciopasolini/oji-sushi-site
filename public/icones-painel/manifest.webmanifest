@@ -1,6 +1,6 @@
 {
-  "name": "Oji CMV",
-  "short_name": "Oji CMV",
+  "name": "Oji Controladoria",
+  "short_name": "Controladoria",
   "id": "/painel",
   "start_url": "/painel",
   "scope": "/painel",

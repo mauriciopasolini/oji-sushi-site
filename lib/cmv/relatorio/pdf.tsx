@@ -34,6 +34,7 @@ function registrarFontes() {
 
 const s = StyleSheet.create({
   pagina: { paddingTop: 42, paddingBottom: 58, paddingHorizontal: 44, fontFamily: "Helvetica", fontSize: 9, color: COR.texto, lineHeight: 1.35 },
+  ferramenta: { fontFamily: "Gelasio", fontWeight: "bold", fontSize: 10, color: COR.marrom, marginBottom: 3 },
   kicker: { fontFamily: "Helvetica-Bold", fontSize: 8, color: COR.laranja, letterSpacing: 0.6 },
   titulo: { fontFamily: "Gelasio", fontWeight: "bold", fontSize: 24, lineHeight: 1.25, color: COR.preto, marginTop: 4, marginBottom: 2 },
   subtitulo: { fontSize: 11, color: COR.marrom, marginTop: 2 },
@@ -127,9 +128,10 @@ function Tabela({ colunas, linhas, quebra = true }: { colunas: Coluna[]; linhas:
   );
 }
 
-function Secao({ titulo, children, quebrarAntes = false }: { titulo: string; children: ReactNode; quebrarAntes?: boolean }) {
+function Secao({ titulo, children, quebrarAntes = false, inteira = false }: { titulo: string; children: ReactNode; quebrarAntes?: boolean; inteira?: boolean }) {
+  // inteira: título e conteúdo nunca se separam (seção curta que não deve quebrar).
   return (
-    <View break={quebrarAntes}>
+    <View break={quebrarAntes} wrap={!inteira}>
       <View wrap={false} minPresenceAhead={80}>
         <Text style={s.secao}>{titulo}</Text>
         <View style={s.secaoLinha} />
@@ -276,9 +278,9 @@ export function DocumentoFechamento({ d }: { d: DadosFechamento }) {
   const pendencias = d.checklist.filter((i) => !i.ok);
 
   return (
-    <Document title={`Fechamento de CMV — ${mes}`} author="Oji Comércio de Alimentos" creator="PZO" producer="PZO" language="pt-BR">
+    <Document title={`Fechamento de CMV — ${mes}`} author="Oji Comércio de Alimentos · Controladoria Oji" creator="PZO" producer="PZO" language="pt-BR">
       <Page size="A4" style={s.pagina}>
-        <View style={s.cabecalhoFixo} fixed render={({ pageNumber }) => (pageNumber > 1 ? <Text style={s.cabecalhoFixoTexto}>{`Fechamento de CMV · ${mes}${d.previa ? " · PRÉVIA" : ""}`}</Text> : null)} />
+        <View style={s.cabecalhoFixo} fixed render={({ pageNumber }) => (pageNumber > 1 ? <Text style={s.cabecalhoFixoTexto}>{`Controladoria Oji · Fechamento de CMV · ${mes}${d.previa ? " · PRÉVIA" : ""}`}</Text> : null)} />
 
         <View style={s.rodapeLinha} fixed />
         <Text style={[s.rodapeTexto, { left: 44 }]} fixed>
@@ -287,6 +289,7 @@ export function DocumentoFechamento({ d }: { d: DadosFechamento }) {
         <Text style={[s.rodapeTexto, { right: 44, textAlign: "right" }]} fixed render={({ pageNumber, totalPages }) => `Oji Comércio de Alimentos · documento gerencial interno · ${pageNumber}/${totalPages}`} />
 
         {/* Cabeçalho */}
+        <Text style={s.ferramenta}>Controladoria Oji</Text>
         <Text style={s.kicker}>OJI COMÉRCIO DE ALIMENTOS · OJI · SHAKAI · WABI</Text>
         <Text style={s.titulo}>Fechamento de CMV</Text>
         <Text style={s.subtitulo}>Custo da Mercadoria Vendida — Fechamento de {mes}</Text>
@@ -573,7 +576,7 @@ export function DocumentoFechamento({ d }: { d: DadosFechamento }) {
         </Secao>
 
         {/* j) Comparativo */}
-        <Secao titulo="10. Comparativo com os últimos meses">
+        <Secao titulo="10. Comparativo com os últimos meses" inteira>
           <View wrap={false}>
           <Tabela
             colunas={[

@@ -30,7 +30,7 @@ export default async function AreaProtegidaLayout({ children }: { children: Reac
         <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-x-4 gap-y-1 px-4 py-3">
           <nav className="flex flex-wrap items-center gap-x-4 gap-y-1">
             <Link href="/painel/cmv" className="font-bold">
-              Oji · CMV
+              Oji · Controladoria
             </Link>
             <Link href="/painel/cmv/notas" className="text-sm font-medium text-neutral-700 hover:underline">
               Notas
