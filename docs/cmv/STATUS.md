@@ -6,11 +6,13 @@ Atualizado em **16/11/2026**. A ferramenta se chama **Controladoria Oji**; o CMV
 
 ## 1. Pronto e em produção
 
-O último merge na `main` é o `66729a4` (Etapa 7: fechamento do mês e relatórios, 15/11/2026). A `cmv/etapa-1` está igual à `main` (mais este commit de docs).
+O último merge na `main` é o `d434b4c` (nome "Controladoria Oji", decisão 118, 16/11/2026). Antes dele: `66729a4` (Etapa 7). A `cmv/etapa-1` está igual à `main` (mais este commit de docs).
 
 **Landing**
 - Byte a byte igual à tag `estado-original`, com duas exceções autorizadas: o link "Acesso equipe" no rodapé (decisão 78) e as duas tags `<link>` de favicon no `<head>`, com `public/favicon.ico` e `public/apple-touch-icon.png` (decisão 104).
 - `scripts/verificar-landing.sh` confere isso. Passou em produção depois do merge `3ac1fcc` (14/11/2026). Em previews `*.vercel.app` ele usa o bypass de automação do `.env.local` (decisão 105).
+
+**Nome "Controladoria Oji" (16/11/2026, decisão 118)**: conferido pelo Mauricio no preview e em produção (merge `d434b4c`). Depois do merge, o `verificar-landing.sh` passou em produção (15 itens). Também em produção: o manifest com "Oji Controladoria" e "Controladoria", e a tela de login com o título "Entrar · Controladoria Oji". As rotas continuam as mesmas. Quem já tem o atalho instalado no celular pode precisar reinstalar para ver o nome novo.
 
 **Etapa 7: fechamento do mês e relatórios (15/11/2026, decisões 111 a 117)**: aprovada pelo Mauricio na prévia e em produção (merge `66729a4`). Depois do merge, o `verificar-landing.sh` passou em produção, `/painel/cmv/fechamento` e a rota de exportação redirecionam para o login, e as fontes não ficam públicas (404).
 - `/painel/cmv/fechamento` (admin): checklist bloqueante, total ERP + delivery, Fechar e Reabrir mês, e download do PDF e do Excel (prévia no mês aberto; snapshot no mês fechado).
@@ -59,7 +61,7 @@ O último merge na `main` é o `66729a4` (Etapa 7: fechamento do mês e relatór
 
 ## 2. Só na branch, aguardando merge
 
-**Nome "Controladoria" (16/11/2026, decisão 118)**, aguardando o OK do Mauricio no preview. São só textos e metadados; nenhuma rota mudou.
+Nada.
 
 ## Corte do fechamento de novembro/2026 (decisão 110)
 
