@@ -4,11 +4,17 @@ Atualizado em **15/11/2026**. Branch de trabalho: `cmv/etapa-1`. Produção: `ma
 
 ## 1. Pronto e em produção
 
-O último merge na `main` é o `73b3674` (itens de contagem, "Fechamento de" e corte de novembro, 15/11/2026). A `cmv/etapa-1` está igual à `main` (mais este commit de docs).
+O último merge na `main` é o `66729a4` (Etapa 7: fechamento do mês e relatórios, 15/11/2026). A `cmv/etapa-1` está igual à `main` (mais este commit de docs).
 
 **Landing**
 - Byte a byte igual à tag `estado-original`, com duas exceções autorizadas: o link "Acesso equipe" no rodapé (decisão 78) e as duas tags `<link>` de favicon no `<head>`, com `public/favicon.ico` e `public/apple-touch-icon.png` (decisão 104).
 - `scripts/verificar-landing.sh` confere isso. Passou em produção depois do merge `3ac1fcc` (14/11/2026). Em previews `*.vercel.app` ele usa o bypass de automação do `.env.local` (decisão 105).
+
+**Etapa 7: fechamento do mês e relatórios (15/11/2026, decisões 111 a 117)**: aprovada pelo Mauricio na prévia e em produção (merge `66729a4`). Depois do merge, o `verificar-landing.sh` passou em produção, `/painel/cmv/fechamento` e a rota de exportação redirecionam para o login, e as fontes não ficam públicas (404).
+- `/painel/cmv/fechamento` (admin): checklist bloqueante, total ERP + delivery, Fechar e Reabrir mês, e download do PDF e do Excel (prévia no mês aberto; snapshot no mês fechado).
+- A migração `20261117090000_fechamento_snapshot.sql` foi aplicada em 15/11, antes do merge, com OK do Mauricio. Nenhum mês fechado ainda.
+- **Primeiro uso real: 01/12/2026**, fechamento de novembro. Antes de fechar: contagem de 29/11 finalizada, notas conferidas, total ERP + delivery informado e vendas até 30/11 sincronizadas.
+- **Falta o Mauricio abrir logado em produção** a tela de fechamento e baixar a prévia: o Claude não tem acesso de login.
 
 **Contagem: início do sistema e "Fechamento de" (15/11/2026, decisões 108 a 110)**: aprovados pelo Mauricio no preview e em produção (merge `73b3674`). O `verificar-landing.sh` passou em produção, e as rotas da contagem redirecionam para o login.
 - Sem aviso nem navegação antes de 11/2026. Título da tela: "Fechamento de novembro/2026".
@@ -51,12 +57,7 @@ O último merge na `main` é o `73b3674` (itens de contagem, "Fechamento de" e c
 
 ## 2. Só na branch, aguardando merge
 
-**Etapa 7: fechamento do mês e relatórios (15/11/2026, decisões 111 a 116)**, aguardando o OK do Mauricio:
-- Tela `/painel/cmv/fechamento` (admin) com checklist bloqueante, campo do total ERP + delivery, "Fechar mês" e "Reabrir mês", e download do PDF e do Excel (prévia no mês aberto).
-- Snapshot imutável ao fechar (`public.fechamentos`), com versões a cada refechamento.
-- **Migração `20261117090000_fechamento_snapshot.sql` aplicada no banco compartilhado em 15/11/2026, com OK do Mauricio.** O `db:test-rls` passou depois disso (127). Nenhum mês está fechado e não há snapshots. O código em produção não usa `fechar_mes` nem `fechamentos`, então nada muda lá até o merge.
-- As 5 decisões apontadas na entrega (Gelasio, conflito trava vendas, fornecedores só do mês, variação da venda só com o mês encerrado, CMV oficial no "Para o DRE") foram aprovadas. Falta o Mauricio revisar o PDF e o Excel da prévia (pode pedir ajustes) e dar o OK do merge.
-- Prévia de novembro gerada com os dados de 15/11 e mostrada ao Mauricio.
+Nada.
 
 ## Corte do fechamento de novembro/2026 (decisão 110)
 
@@ -76,7 +77,7 @@ O último merge na `main` é o `73b3674` (itens de contagem, "Fechamento de" e c
 | 6 | **Banco separado para o preview** | Não iniciado. Hoje preview e produção usam o **mesmo** Supabase (`zjmzujzgwgkplghszuyi`): o que se lança no preview vai para o banco real e as migrações valem para os dois na hora em que são aplicadas. |
 | 7 | **Cores da coluna Total em Vendas** | ✅ **Concluída hoje** e em produção (decisão 81). Falta só ver num celular de verdade o comportamento ao tocar. |
 | 8 | **Etapa 6: conferência, fornecedores e contagem** | ✅ Em produção (merge `46d0e32`). A fazer: o Mauricio confere as telas logado em produção e cadastra os itens de contagem; a 1ª contagem real é no domingo 29/11/2026 (decisão 110). As 39 notas lançadas como NF-e/caixa podem ser corrigidas na conferência. |
-| 9 | **Etapa 7: fechamento do mês e PDF/Excel** | Na branch, com a migração aplicada; aguardando a revisão do PDF/Excel e o OK do merge (seção 2). Primeiro uso real: 01/12/2026, fechamento de novembro. |
+| 9 | **Etapa 7: fechamento do mês e PDF/Excel** | ✅ Em produção (merge `66729a4`). Primeiro uso real: 01/12/2026, fechamento de novembro. |
 | 10 | **Etapa 8: revisão final e `docs/cmv/OPERACAO.md`** | Também: tela de configurações (Etapa 9 do briefing). A mescla de fornecedores saiu na Etapa 6. |
 | 12 | **Etapa 9: DRE Gerencial no painel** (próxima depois da Etapa 8) | Meta: gerar o **DRE de dezembro/2026 pelo sistema**. O relatório da Etapa 7 se chama "Fechamento de CMV" (não é o DRE). O snapshot do fechamento já guarda o que o DRE vai usar: vendas por origem (restaurante × teles), por marca (Oji, Shakai e Wabi), por turno e por forma de pagamento do restaurante, além da base de cálculo e do total ERP (decisão 112). Faltam as despesas (mão de obra, ocupação, taxas e serviços), o comparativo e o texto de leitura. Referência de layout: `docs/cmv/referencias/DRE_Gerencial_Outubro2026.pdf` (local, fora do Git). |
 | 11 | **`theme-color` do painel** | Continua `#111111` (barra de status do atalho "Oji CMV" fica grafite). O manifest tem `#E8321A`; trocar a tag se o Mauricio quiser a barra vermelha. |
