@@ -51,7 +51,11 @@ O último merge na `main` é o `73b3674` (itens de contagem, "Fechamento de" e c
 
 ## 2. Só na branch, aguardando merge
 
-Nada.
+**Etapa 7: fechamento do mês e relatórios (15/11/2026, decisões 111 a 116)**, aguardando o OK do Mauricio:
+- Tela `/painel/cmv/fechamento` (admin) com checklist bloqueante, campo do total ERP + delivery, "Fechar mês" e "Reabrir mês", e download do PDF e do Excel (prévia no mês aberto).
+- Snapshot imutável ao fechar (`public.fechamentos`), com versões a cada refechamento.
+- **Migração `20261117090000_fechamento_snapshot.sql` ainda NÃO aplicada.** Ela foi testada só em transação desfeita (`db:test-rls -- --com-migracao`) e espera o OK do Mauricio. Sem ela, a tela e os downloads da prévia funcionam, mas "Fechar mês" avisa que a migração está pendente.
+- Prévia de novembro gerada com os dados de 15/11 e mostrada ao Mauricio.
 
 ## Corte do fechamento de novembro/2026 (decisão 110)
 
@@ -71,8 +75,9 @@ Nada.
 | 6 | **Banco separado para o preview** | Não iniciado. Hoje preview e produção usam o **mesmo** Supabase (`zjmzujzgwgkplghszuyi`): o que se lança no preview vai para o banco real e as migrações valem para os dois na hora em que são aplicadas. |
 | 7 | **Cores da coluna Total em Vendas** | ✅ **Concluída hoje** e em produção (decisão 81). Falta só ver num celular de verdade o comportamento ao tocar. |
 | 8 | **Etapa 6: conferência, fornecedores e contagem** | ✅ Em produção (merge `46d0e32`). A fazer: o Mauricio confere as telas logado em produção e cadastra os itens de contagem; a 1ª contagem real é no domingo 29/11/2026 (decisão 110). As 39 notas lançadas como NF-e/caixa podem ser corrigidas na conferência. |
-| 9 | **Etapa 7: fechamento do mês e PDF/Excel** | Checklist do fechamento: zero compras aguardando nota fiscal ou uma justificativa por pendente (o banco já recusa fechar sem isso: decisão 86). Incluir no relatório a tabela "CMV por semana" (`calcularCmvSemanas`, decisão 89). |
+| 9 | **Etapa 7: fechamento do mês e PDF/Excel** | Na branch, aguardando o OK e a aplicação da migração (seção 2). Primeiro uso real: 01/12/2026, fechamento de novembro. |
 | 10 | **Etapa 8: revisão final e `docs/cmv/OPERACAO.md`** | Também: tela de configurações (Etapa 9 do briefing). A mescla de fornecedores saiu na Etapa 6. |
+| 12 | **Etapa 9: DRE Gerencial no painel** (próxima depois da Etapa 8) | Meta: gerar o **DRE de dezembro/2026 pelo sistema**. O relatório da Etapa 7 se chama "Fechamento de CMV" (não é o DRE). O snapshot do fechamento já guarda o que o DRE vai usar: vendas por origem (restaurante × teles), por marca (Oji, Shakai e Wabi), por turno e por forma de pagamento do restaurante, além da base de cálculo e do total ERP (decisão 112). Faltam as despesas (mão de obra, ocupação, taxas e serviços), o comparativo e o texto de leitura. Referência de layout: `docs/cmv/referencias/DRE_Gerencial_Outubro2026.pdf` (local, fora do Git). |
 | 11 | **`theme-color` do painel** | Continua `#111111` (barra de status do atalho "Oji CMV" fica grafite). O manifest tem `#E8321A`; trocar a tag se o Mauricio quiser a barra vermelha. |
 
 ## 4. Decisões de hoje (em `docs/cmv/DECISOES.md`)
@@ -100,6 +105,7 @@ Nada.
 - **106 e 107:** PDFs de referência fora do Git (repositório público) e cadastro dos 30 itens de contagem.
 - **108 e 109:** início do sistema (11/2026) na contagem e campo "Fechamento de", com a regra no banco.
 - **110:** corte de novembro: contagem em 29/11 e compras de 30/11 lançadas em 01/12.
+- **111 a 116:** Etapa 7: checklist bloqueante, snapshot imutável com versões, estoque e CMV real no fechamento, relatórios PDF/Excel (Gelasio no lugar da Georgia), notas gerenciais fixas e testes.
 
 ## 5. Como retomar
 
@@ -120,8 +126,8 @@ Na Vercel (Production e Preview) estão todas, menos `SUPABASE_DB_URL`. Para env
 git checkout cmv/etapa-1 && git pull
 npm install
 npm run db:status          # migrações aplicadas (11, até 20261116090000_contagem_fechamento_de.sql)
-npm test                   # 169 testes de cálculo
-npm run db:test-rls        # 107 testes de regras no banco (transação desfeita: não grava nada)
+npm test                   # 189 testes de cálculo
+npm run db:test-rls        # 127 testes de regras no banco (com a migração da Etapa 7: --com-migracao enquanto ela não for aplicada) (transação desfeita: não grava nada)
 npm run typecheck
 npm run build && npx next start -p 3123   # servidor local
 sh scripts/verificar-landing.sh http://localhost:3123

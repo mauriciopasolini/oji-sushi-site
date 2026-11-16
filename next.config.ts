@@ -3,6 +3,13 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   poweredByHeader: false,
 
+  // Relatório PDF do fechamento: renderizado no servidor (Node), com a fonte Gelasio
+  // lida do disco. As fontes precisam ir junto na função da rota de exportação.
+  serverExternalPackages: ["@react-pdf/renderer"],
+  outputFileTracingIncludes: {
+    "/painel/cmv/fechamento/exportar": ["./lib/cmv/relatorio/fontes/**/*"],
+  },
+
   async rewrites() {
     return {
       // A landing pública é o HTML estático em public/index.html.

@@ -345,3 +345,51 @@ As compras são concentradas na segunda (para seg–qui) e na sexta (para sex–
      - **Novembro fecha como CMV de compras.** O CMV real começa em dezembro (estoque inicial = contagem de 29/11; estoque final = contagem de fechamento de dezembro). Não haverá "estoque inicial estimado" para novembro.
      - Efeito conhecido e aceito: as vendas da segunda 30/11 ficam em novembro, e o consumo desse dia sai do estoque contado em 29/11, ou seja, entra no CMV de dezembro. É um dia de distorção pequena, e é o preço de contar com a loja fechada.
 
+## 2026-11-15 — Etapa 7: fechamento do mês e relatórios (pedido do Mauricio)
+
+111. **Checklist bloqueante do fechamento** (`/painel/cmv/fechamento`, só admin). Sete itens, cada um com o que falta e um link para a tela que resolve:
+     1. **Mês encerrado** (o último dia já passou, em São Paulo).
+     2. **Vendas completas até o último dia**: todo dia com linha em `vendas_turno` (planilha, manual ou "sem movimento") ou aba sincronizada em `fechamento_turno`, como na decisão 53. **Conflito de venda pendente também bloqueia**, porque o valor do dia ainda não está decidido.
+     3. **Contagem de fechamento finalizada**, com "Fechamento de" = o mês.
+     4. **Todas as notas conferidas.** Divergente conta como revisada, porque o banco já exige a observação.
+     5. **Compras "sem nota" resolvidas ou justificadas** (decisão 86).
+     6. **Fornecedores novos revisados**, considerando só os que têm nota ativa no mês. Um fornecedor criado em dezembro não trava o fechamento de novembro.
+     7. **Total ERP + delivery informado** (`meses.venda_base_erp`), digitado na própria tela de fechamento. A base de cálculo é a menor entre caixa e ERP, com a nota da divergência na convenção do DRE Gerencial.
+     - As regras estão em `lib/cmv/fechamento/checklist.ts` (tela e prévia) e, iguais, em `interno.pendencias_fechamento` no banco. A tela orienta; o banco garante.
+112. **Fechar = snapshot imutável** (migração `20261117090000_fechamento_snapshot.sql`).
+     - **`public.fechamentos`**: uma linha por fechamento (versão 1, 2… a cada refechamento depois de uma reabertura), com o snapshot (JSON), a assinatura e um resumo em colunas (`venda_base`, `cmv_valor`, `cmv_pct`, `cmv_tipo`), usado no comparativo e no DRE futuro. Só inclusão: um trigger recusa UPDATE e DELETE para todos, inclusive o postgres, e só aceita INSERT por dentro de `fechar_mes`. Membros leem.
+     - **`public.fechar_mes(mes, snapshot, assinatura)`** substitui `fechar_mes(mes)`, que foi removida, então não dá mais para fechar sem snapshot. Ela faz, na mesma transação:
+       1. confere o checklist;
+       2. recalcula a **assinatura** (nº e total das notas ativas, total das vendas, ERP, estoques inicial e final, em centavos) e recusa se os dados mudaram desde que o app montou o snapshot ("recarregue e tente de novo");
+       3. valida o snapshot (mês certo, formato 1, não é prévia, assinatura igual);
+       4. grava a versão e fecha o mês, com auditoria `close` que registra a versão.
+     - O snapshot é montado pelo app com o **mesmo motor do painel** (`montarFechamento` → `calcularPainel`/`calcularCmvSemanas`). Por isso a prévia, o snapshot e o painel batem entre si.
+     - **Travas do mês fechado**: as triggers da decisão 14 já impediam gravar notas, contagem e vendas (a sincronização também respeita). O snapshot garante que o relatório do mês fechado nunca mude, mesmo se categorias, régua ou nomes de fornecedor mudarem depois.
+     - **Reabrir**: `reabrir_mes(mes, motivo)` não mudou (só admin, motivo auditado). O snapshot anterior fica como histórico; ao refechar, nasce uma nova versão. A tela lista as versões.
+     - **Preparação para o DRE (Etapa 9)**: o snapshot guarda vendas por origem (restaurante × teles), por marca (Oji, Shakai e Wabi), por turno e por forma de pagamento do restaurante (dinheiro, crédito, débito e pix), além dos recebimentos e pedidos das teles, da base de cálculo e do total ERP.
+     - Limite conhecido: entre a montagem do snapshot e o fim de `fechar_mes` há uma janela de milissegundos em que outra sessão pode gravar no mês. A assinatura cobre o caso comum (dados mudando antes de fechar). Fechar a janela por completo exigiria travar `meses` em toda gravação, e não vale o custo.
+113. **Estoque e CMV no fechamento.**
+     - O estoque final do mês é a contagem finalizada com "Fechamento de" = o mês. Ela vira o estoque inicial do mês seguinte. O estoque inicial só existe a partir do 2º mês do sistema.
+     - Com os dois estoques, o mês mostra o **CMV real** (inicial + compras − final), que é o oficial e o que vale para a régua, e também o **CMV de compras**, comparável com o histórico. O CMV real também sai por categoria, usando a categoria de cada item da contagem.
+     - **Novembro/2026** fecha como CMV de compras. O estoque final (contagem de 29/11) aparece no relatório, mas não é descontado, com a nota explicando isso. A nota do corte de 30/11 (decisão 110) também entra.
+     - A aba "Para o DRE" usa o CMV oficial do mês (o real, quando existe) e diz qual foi usado.
+     - Na prévia de um mês em andamento, a variação da **venda** contra o mês anterior não aparece, porque meio mês contra um mês inteiro engana. A variação do CMV em p.p. aparece.
+114. **Relatórios PDF e Excel, só por download.**
+     - Rota `/painel/cmv/fechamento/exportar?mes=AAAA-MM&formato=pdf|xlsx`, só admin. Mês fechado sai do último snapshot; mês aberto sai como **prévia** (faixa "PRÉVIA" no PDF, situação na aba Resumo e prefixo `previa-` no nome do arquivo). Não há envio por e-mail.
+     - **PDF** (`@react-pdf/renderer`, JavaScript puro e testado com o Smart App Control): A4, layout do DRE Gerencial como referência, paleta PZO (#111110, #D85A30, #712B13, #f5f3f0, #2a2926) e rodapé "Desenvolvido por PZO — Infraestrutura digital para negócios inteligentes." em todas as páginas.
+       - Títulos em **Gelasio**, serifa livre (OFL) com as métricas da Georgia, embutida em `lib/cmv/relatorio/fontes/` junto com a licença. A Georgia é proprietária da Microsoft e não pode ir para um repositório público. O corpo usa Helvetica, padrão do PDF.
+       - O texto evita "−", "≤" e setas, que a Helvetica não tem.
+       - Seções: resumo, base de cálculo, CMV por categoria, CMV por semana, planejado × comprado, estoque, fornecedores, notas por categoria, pendências e alertas, e comparativo de 6 meses.
+     - **Excel** (`exceljs`): Resumo, CMV por categoria, CMV por semana, Notas, Vendas diárias, Contagem, Fornecedores, Histórico e Para o DRE.
+       - Cabeçalho numa linha só, sem células mescladas.
+       - R$ e % como número formatado, e datas como data.
+     - O `exceljs` traz a `uuid` 8, que tem um alerta de segurança (só nas funções v3/v5/v6 com buffer, que ele não usa). Mesmo assim, `overrides.uuid = 11.1.1` deixou o `npm audit` zerado, e o Excel foi testado com ela.
+     - `next.config.ts`: `serverExternalPackages: ["@react-pdf/renderer"]` e `outputFileTracingIncludes` para as fontes irem na função da rota. Conferido no `.nft.json` do build e com o servidor local.
+     - O documento de referência (`docs/cmv/referencias/DRE_Gerencial_Outubro2026.pdf`) continua fora do Git (decisão 106).
+115. **Notas gerenciais fixas por mês** em `lib/cmv/fechamento/notas-gerenciais.ts`, vindas de decisões registradas. Hoje: o corte de 30/11 (decisão 110), em novembro e em dezembro. Elas entram no PDF, no Excel e no snapshot.
+116. **Testes da Etapa 7.**
+     - **Cálculo** (`lib/cmv/fechamento/fechamento.test.ts`, 20 casos): checklist item a item, base menor, novembro sem estoque inicial, mês fictício com estoque inicial e final (CMV real total e por categoria), virada de estoque, planejado × comprado, vendas por origem/marca/turno/pagamento, histórico, ranking, alertas, assinatura e prévia no meio do mês. Total: 189.
+     - **Banco** (`testar-rls`, 20 casos novos, em meses fictícios de 2020): checklist por pendência, recusa com pendências, gestor não fecha, recusa com dados mudados e com snapshot de prévia, fechamento com versão e auditoria, snapshot imutável (nem o postgres altera ou apaga), insert direto recusado, travas de vendas, contagem e notas, reabertura mantendo o snapshot e refechamento com versão 2. Total: 127.
+     - Os testes antigos que fechavam novembro real pela assinatura antiga passaram a fechar o mês direto (com o status liberado só na transação), porque novembro ainda não terminou.
+     - **Prévia com dados reais** (só leitura): `SAIDA_PREVIA=<pasta> node --env-file=.env.local node_modules/vitest/vitest.mjs run -c vitest.integracao.config.ts lib/cmv/fechamento/previa` grava o PDF e o Excel do mês e um PDF de exemplo com CMV real.
+
