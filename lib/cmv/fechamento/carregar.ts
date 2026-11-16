@@ -7,6 +7,7 @@ import { centavos } from "../dinheiro";
 import type { PesosSemana } from "../engine";
 import type { NotaRow } from "../tipos";
 import { montarFechamento } from "./montar";
+import { corteDoMes } from "./notas-gerenciais";
 import type { ContagemEntrada, DadosFechamento, EntradaFechamento, HistoricoEntrada, Origem } from "./tipos";
 
 /** Padrões de um mês que ainda não existe no banco (iguais aos defaults da tabela meses). */
@@ -172,7 +173,26 @@ export async function carregarEntrada(supabase: SupabaseClient, competencia: Dat
     contagemFinal: final,
     contagemInicial: inicial ? { ...inicial, competencia: anterior } : null,
     historico,
+    notasCorteMesSeguinte: [],
   };
+
+  // Mês que fecha com corte: as compras do dia do corte foram lançadas no mês seguinte.
+  if (corteDoMes(ini)?.papel === "fecha") {
+    const seguinte = somarMeses(ini, 1);
+    const { data, error } = await supabase
+      .from("notas")
+      .select("data_emissao, valor, fornecedores(nome)")
+      .eq("status", "ativa")
+      .gte("data_emissao", seguinte)
+      .lte("data_emissao", fimDoMes(seguinte))
+      .ilike("observacao", "%corte de estoque%");
+    if (error) throw new Error(error.message);
+    entrada.notasCorteMesSeguinte = ((data ?? []) as unknown as { data_emissao: string; valor: number; fornecedores: { nome: string } | null }[]).map((n) => ({
+      data: n.data_emissao,
+      fornecedor: n.fornecedores?.nome ?? "?",
+      valor: centavos(n.valor),
+    }));
+  }
 
   const perfil = (mesQ.data as { perfis?: { nome: string } | null } | null)?.perfis;
   return {

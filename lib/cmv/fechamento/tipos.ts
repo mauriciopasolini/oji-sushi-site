@@ -86,6 +86,8 @@ export type HistoricoEntrada = {
   cmvValor: Centavos | null;
   cmvPct: number;
   fonte: "historico" | "sistema";
+  /** CMV em R$ calculado (venda × %) porque o histórico só tinha o % */
+  cmvCalculado?: boolean;
 };
 
 export type EntradaFechamento = {
@@ -119,6 +121,11 @@ export type EntradaFechamento = {
   contagemInicial: (ContagemEntrada & { competencia: DataCivil }) | null;
   /** meses anteriores (historico_mensal + snapshots de meses fechados), qualquer ordem */
   historico: HistoricoEntrada[];
+  /**
+   * Mês que fecha com corte de estoque (decisão 110): notas ativas do mês SEGUINTE com a
+   * observação de corte. Vazio nos demais meses.
+   */
+  notasCorteMesSeguinte: { data: DataCivil; fornecedor: string; valor: Centavos }[];
 };
 
 // -----------------------------------------------------------------------------

@@ -5,6 +5,7 @@ import "server-only";
 // Fornecedores, Histórico e "Para o DRE".
 
 import ExcelJS from "exceljs";
+import { classificarRegua } from "../engine";
 import type { DadosFechamento } from "../fechamento/tipos";
 import { mesCurto, ROTULO_CONF, ROTULO_FORMA, ROTULO_TIPO, tituloMes } from "../fechamento/formatos";
 import { RODAPE_PZO } from "./constantes";
@@ -228,6 +229,8 @@ export async function gerarExcel(d: DadosFechamento): Promise<Buffer> {
       { titulo: "Venda base (R$)", largura: 16, tipo: "brl" },
       { titulo: "CMV (R$)", largura: 14, tipo: "brl" },
       { titulo: "CMV (%)", largura: 10, tipo: "pct" },
+      { titulo: "CMV em R$ calculado", largura: 20 },
+      { titulo: "Faixa da régua", largura: 14 },
       { titulo: "Origem", largura: 22 },
     ],
     d.historico.map((h) => [
@@ -236,6 +239,8 @@ export async function gerarExcel(d: DadosFechamento): Promise<Buffer> {
       reais(h.venda),
       reais(h.cmvValor),
       h.cmvPct,
+      h.cmvCalculado ? "sim (venda × %)" : "não",
+      classificarRegua(h.cmvPct, d.regua)?.faixa ?? null,
       h.competencia === d.competencia ? (d.previa ? "este mês (prévia)" : "este fechamento") : h.fonte === "sistema" ? "sistema" : "DRE (histórico manual)",
     ]),
   );

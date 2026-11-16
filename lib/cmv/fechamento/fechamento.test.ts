@@ -163,7 +163,7 @@ describe("mês com estoque inicial e final: CMV real", () => {
     expect(dDez.estoque.inicial?.data).toBe("2026-11-29");
     expect(dDez.cmv.tipo).toBe("real");
     expect(dDez.cmv.real).toBe(750_000 + dDez.cmv.compras - 500_000);
-    expect(dDez.notasGerenciais.join(" ")).toContain("30/11/2026");
+    expect(dDez.notasGerenciais.join(" ")).toContain("O estoque inicial é a contagem de 29/11 (R$");
   });
 
   it("estoque inicial sem final finalizado: CMV de compras com nota", () => {
@@ -259,3 +259,69 @@ describe("conteúdo do snapshot", () => {
     expect(checklistCompleto(d.checklist)).toBe(false);
   });
 });
+
+describe("nota do corte de estoque gerada pelos dados (decisão 110)", () => {
+  const corte = (valor: number) => ({ data: "2026-12-01", fornecedor: "Frumar", valor });
+
+  it("prévia de novembro: 'previsto', mesmo com contagem finalizada; mostra as notas de corte que já existem", () => {
+    const e = entradaBase("2026-11-01", "2026-11-20");
+    e.contagemFinal = contagem("2026-11-29", [[CAT.pescados.id, 700_000]]);
+    let t = montarFechamento(e, { previa: true }).notasGerenciais.join(" ");
+    expect(t).toContain("Previsto (decisão 110): contagem de fechamento em 29/11");
+    expect(t).toContain("compras recebidas em 30/11 lançadas em dezembro/2026 (data 01/12");
+    expect(t).not.toContain("foi feita");
+    e.notasCorteMesSeguinte = [corte(150_000)];
+    t = montarFechamento(e, { previa: true }).notasGerenciais.join(" ");
+    expect(t).toContain("Até agora: 1 compra(s), R$ 1.500,00 com a observação de corte.");
+  });
+
+  it("fechamento de novembro sem contagem finalizada continua 'previsto'", () => {
+    const e = entradaBase("2026-11-01", "2026-12-01");
+    e.contagemFinal = { ...contagem("2026-11-29", [[CAT.pescados.id, 1]]), status: "rascunho" };
+    expect(montarFechamento(e, { previa: false }).notasGerenciais.join(" ")).toMatch(/^Corte de estoque\. Previsto/);
+  });
+
+  it("fechamento de novembro: data real da contagem e quantidade/valor das notas de corte lançadas em dezembro", () => {
+    const e = entradaBase("2026-11-01", "2026-12-01");
+    e.contagemFinal = contagem("2026-11-29", [[CAT.pescados.id, 700_000], [CAT.mercado.id, 50_000]]);
+    e.notasCorteMesSeguinte = [corte(150_000), corte(98_050)];
+    const t = montarFechamento(e, { previa: false }).notasGerenciais.join(" ");
+    expect(t).toContain("a contagem de fechamento foi feita em 29/11 (R$ 7.500,00)");
+    expect(t).toContain("2 compra(s), R$ 2.480,50 recebidas em 30/11 foram lançadas em dezembro/2026");
+    expect(t).not.toContain("Previsto");
+    expect(t).not.toContain("como previsto");
+  });
+
+  it("contagem feita em outro dia: a nota diz a data real e que não foi a prevista; sem notas de corte, diz isso", () => {
+    const e = entradaBase("2026-11-01", "2026-12-01");
+    e.contagemFinal = contagem("2026-11-28", [[CAT.pescados.id, 700_000]]);
+    const t = montarFechamento(e, { previa: false }).notasGerenciais.join(" ");
+    expect(t).toContain("feita em 28/11 (R$ 7.000,00), e não em 29/11 como previsto");
+    expect(t).toContain("nenhuma compra com a observação de corte havia sido lançada em dezembro/2026 até este fechamento");
+  });
+
+  it("dezembro: conta as próprias notas com a observação de corte e cita o estoque inicial", () => {
+    const e = entradaBase("2026-12-01", "2027-01-01");
+    e.contagemInicial = { ...contagem("2026-11-29", [[CAT.pescados.id, 750_000]]), competencia: "2026-11-01" };
+    e.notas.push(nota({ data: "2026-12-01", valor: 150_000, categoriaId: CAT.pescados.id, observacao: "recebida em 30/11 — corte de estoque, competência dezembro" }));
+    const t = montarFechamento(e, { previa: false }).notasGerenciais.join(" ");
+    expect(t).toContain("este mês inclui 1 compra(s), R$ 1.500,00 recebidas em 30/11");
+    expect(t).toContain("O estoque inicial é a contagem de 29/11 (R$ 7.500,00)");
+    expect(montarFechamento(entradaBase("2027-01-01", "2027-02-01"), { previa: false }).notasGerenciais).toEqual([]);
+  });
+});
+
+describe("comparativo: CMV em R$ calculado quando o histórico só tem o %", () => {
+  it("junho a setembro: venda × % marcado como calculado; outubro (com R$) fica como está", () => {
+    const e = entradaBase("2026-11-01", "2026-12-01");
+    e.historico = [
+      { competencia: "2026-06-01", venda: 9_296_526, cmvValor: null, cmvPct: 0.365, fonte: "historico" },
+      { competencia: "2026-10-01", venda: 8_592_154, cmvValor: 3_022_390, cmvPct: 0.351762, fonte: "historico" },
+    ];
+    const h = montarFechamento(e, { previa: false }).historico;
+    expect(h[0]).toMatchObject({ competencia: "2026-06-01", cmvValor: 3_393_232, cmvCalculado: true });
+    expect(h[1]).toMatchObject({ competencia: "2026-10-01", cmvValor: 3_022_390 });
+    expect(h[1].cmvCalculado).toBeUndefined();
+  });
+});
+

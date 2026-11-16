@@ -68,6 +68,7 @@ export function entradaBase(competencia: string, hoje: string): EntradaFechament
     contagemFinal: contagem(dias[dias.length - 1], [[CAT.pescados.id, 600_000], [CAT.bebidas.id, 100_000]]),
     contagemInicial: null,
     historico: [],
+    notasCorteMesSeguinte: [],
   };
 }
 

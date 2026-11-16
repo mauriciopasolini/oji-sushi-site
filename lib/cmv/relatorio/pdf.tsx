@@ -10,6 +10,7 @@ import path from "node:path";
 import { Document, Font, Page, StyleSheet, Text, View, renderToBuffer } from "@react-pdf/renderer";
 import type { ReactNode } from "react";
 import type { DataCivil } from "../datas";
+import { classificarRegua } from "../engine";
 import type { DadosFechamento, NotaSnapshot } from "../fechamento/tipos";
 import { COR, RODAPE_PZO } from "./constantes";
 import { brl, dataBR, dataBRCompleta, mesCurto, pct, pp, ROTULO_CONF, ROTULO_TIPO, tituloMes, valorBR, variacaoPct } from "../fechamento/formatos";
@@ -68,7 +69,7 @@ const s = StyleSheet.create({
 // Componentes
 // -----------------------------------------------------------------------------
 
-type Celula = string | { t: string; negrito?: boolean; cor?: string; italico?: boolean } | { barra: number; cor: string };
+type Celula = string | { t: string; negrito?: boolean; cor?: string; italico?: boolean } | { barra: number; cor: string; opaco?: boolean };
 type Coluna = { titulo: string; flex: number; alinhar?: "left" | "right" | "center" };
 type Linha = { celulas: Celula[]; estilo?: "total" | "grupo" | "destaque" | "recuo" };
 
@@ -97,7 +98,7 @@ function Tabela({ colunas, linhas, quebra = true }: { colunas: Coluna[]; linhas:
             if (typeof c !== "string" && "barra" in c)
               return (
                 <View key={j} style={{ flex: colunas[j].flex, paddingHorizontal: 5, justifyContent: "center" }}>
-                  <View style={{ height: 6, width: `${Math.max(1, Math.min(100, c.barra))}%`, backgroundColor: c.cor }} />
+                  <View style={{ height: 6, width: `${Math.max(1, Math.min(100, c.barra))}%`, backgroundColor: c.cor, opacity: c.opaco ? 1 : 0.45 }} />
                 </View>
               );
             const cel = typeof c === "string" ? { t: c } : c;
@@ -175,6 +176,8 @@ export function DocumentoFechamento({ d }: { d: DadosFechamento }) {
   const cats = d.categorias;
   const nomeCat = new Map(cats.map((c) => [c.id, c.nome]));
   const ant = d.variacao.anterior;
+  // Uma régua só para o relatório inteiro (resumo, semanas e comparativo).
+  const faixaDe = (p: number | null) => classificarRegua(p, d.regua);
 
   // 3. CMV por categoria
   const linhasCategoria: Linha[] = real
@@ -588,9 +591,9 @@ export function DocumentoFechamento({ d }: { d: DadosFechamento }) {
                 celulas: [
                   { t: mesCurto(h.competencia), negrito: true },
                   valorBR(h.venda),
-                  h.cmvValor === null ? "—" : valorBR(h.cmvValor),
-                  { t: pct(h.cmvPct), cor: h.cmvPct > d.cmv.metaPct ? COR.vermelho : COR.verde, negrito: atual },
-                  { barra: largura, cor: atual ? COR.laranja : h.cmvPct > d.cmv.metaPct ? "#c9b9a8" : "#a9c4aa" },
+                  h.cmvValor === null ? "—" : { t: `${valorBR(h.cmvValor)}${h.cmvCalculado ? "*" : ""}`, italico: h.cmvCalculado },
+                  { t: pct(h.cmvPct), cor: faixaDe(h.cmvPct)?.cor, negrito: atual },
+                  { barra: largura, cor: faixaDe(h.cmvPct)?.cor ?? COR.linha, opaco: atual },
                   { t: atual ? (d.previa ? "este mês (prévia)" : "este fechamento") : h.fonte === "sistema" ? "sistema" : "DRE (manual)", italico: true },
                 ],
                 estilo: atual ? ("destaque" as const) : undefined,
@@ -598,7 +601,9 @@ export function DocumentoFechamento({ d }: { d: DadosFechamento }) {
             })}
           />
           <Text style={s.legenda}>
-            Até outubro/2026: fechamentos do DRE Gerencial (histórico informado). A partir de novembro/2026: fechamentos do sistema. Em verde, CMV na meta de {pct(d.cmv.metaPct)} ou abaixo.
+            Até outubro/2026: fechamentos do DRE Gerencial (histórico informado). A partir de novembro/2026: fechamentos do sistema. Cores pela régua do CMV
+            ({d.regua.map((f) => (f.limiteSuperiorPct === null ? `${f.faixa} acima` : `${f.faixa} até ${pct(f.limiteSuperiorPct)}`)).join(", ")}), como no resto do relatório.
+            {d.historico.some((h) => h.cmvCalculado) ? " * CMV em R$ calculado (venda × CMV %): o histórico desses meses só tem o percentual." : ""}
             {real ? " A partir do primeiro mês com estoque, o % do sistema é o CMV real." : ""}
           </Text>
           </View>

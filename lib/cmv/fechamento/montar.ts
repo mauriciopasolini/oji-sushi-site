@@ -7,7 +7,7 @@ import type { Centavos } from "../dinheiro";
 import { calcularPainel } from "../engine";
 import { avaliarChecklist, diasRegistrados } from "./checklist";
 import { brl, dataBR, mesCurto, nomeMes } from "./formatos";
-import { notasGerenciaisDe } from "./notas-gerenciais";
+import { corteDoMes, notasGerenciais, RE_OBS_CORTE } from "./notas-gerenciais";
 import type { Assinatura, BlocoVendas, ContagemEntrada, DadosFechamento, EntradaFechamento, LinhaCategoria, NotaSnapshot, Origem, VendaTurnoEntrada } from "./tipos";
 
 const soma = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
@@ -202,7 +202,8 @@ export function montarFechamento(e: EntradaFechamento, opcoes: { previa: boolean
   for (let k = 5; k >= 1; k--) {
     const comp = somarMeses(ini, -k);
     const h = e.historico.find((x) => x.competencia === comp && x.fonte === "sistema") ?? e.historico.find((x) => x.competencia === comp && x.fonte === "historico");
-    if (h) anteriores.push(h);
+    // Histórico que só tem o %: o CMV em R$ é calculado (venda × %) e marcado como tal.
+    if (h) anteriores.push(h.cmvValor === null ? { ...h, cmvValor: Math.round(h.venda * h.cmvPct), cmvCalculado: true } : h);
   }
   const pctOficial = cmv.cmvPct;
   const historico = [...anteriores, ...(pctOficial !== null ? [{ competencia: ini, venda: base, cmvValor: valorCmv, cmvPct: pctOficial, fonte: "sistema" as const }] : [])];
@@ -291,7 +292,16 @@ export function montarFechamento(e: EntradaFechamento, opcoes: { previa: boolean
       observacoes,
       conflitosPendentes: e.conflitosPendentes.length,
     },
-    notasGerenciais: notasGerenciaisDe(ini),
+    notasGerenciais: notasGerenciais({
+      competencia: ini,
+      previa: opcoes.previa,
+      contagemFinal: e.contagemFinal,
+      contagemInicial: ei,
+      notasCorte:
+        corteDoMes(ini)?.papel === "recebe"
+          ? e.notas.filter((n) => RE_OBS_CORTE.test(n.observacao ?? "")).map((n) => ({ data: n.data, fornecedor: n.fornecedorNome, valor: n.valor }))
+          : e.notasCorteMesSeguinte,
+    }),
     historico,
     dre: [
       { linha: "RECEITA (base de cálculo)", valor: base, pct: base > 0 ? 1 : null, nivel: 0 },

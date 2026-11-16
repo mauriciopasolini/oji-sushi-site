@@ -106,7 +106,7 @@ O último merge na `main` é o `73b3674` (itens de contagem, "Fechamento de" e c
 - **106 e 107:** PDFs de referência fora do Git (repositório público) e cadastro dos 30 itens de contagem.
 - **108 e 109:** início do sistema (11/2026) na contagem e campo "Fechamento de", com a regra no banco.
 - **110:** corte de novembro: contagem em 29/11 e compras de 30/11 lançadas em 01/12.
-- **111 a 116:** Etapa 7: checklist bloqueante, snapshot imutável com versões, estoque e CMV real no fechamento, relatórios PDF/Excel (Gelasio no lugar da Georgia), notas gerenciais fixas e testes.
+- **111 a 117:** Etapa 7: checklist bloqueante, snapshot imutável com versões, estoque e CMV real no fechamento, relatórios PDF/Excel (Gelasio no lugar da Georgia), notas gerenciais fixas e testes.
 
 ## 5. Como retomar
 
@@ -127,7 +127,7 @@ Na Vercel (Production e Preview) estão todas, menos `SUPABASE_DB_URL`. Para env
 git checkout cmv/etapa-1 && git pull
 npm install
 npm run db:status          # migrações aplicadas (12, até 20261117090000_fechamento_snapshot.sql)
-npm test                   # 189 testes de cálculo
+npm test                   # 195 testes de cálculo
 npm run db:test-rls        # 127 testes de regras no banco (transação desfeita: não grava nada)
 npm run typecheck
 npm run build && npx next start -p 3123   # servidor local
