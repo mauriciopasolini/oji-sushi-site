@@ -2,6 +2,8 @@
 
 Atualizado em **15/11/2026**. Branch de trabalho: `cmv/etapa-1`. Produção: `main`, publicada em https://www.ojisushi.com.br.
 
+**Próximo passo: Etapa 8** (revisão final e `docs/cmv/OPERACAO.md`; pendência 10). Depois dela vem a Etapa 9, o DRE Gerencial no painel (pendência 12). Datas reais antes disso: itens de contagem com custo e ensaio com o Douglas antes de 29/11, contagem de fechamento em 29/11 e fechamento de novembro a partir de 01/12 (Etapa 7, já em produção).
+
 ## 1. Pronto e em produção
 
 O último merge na `main` é o `66729a4` (Etapa 7: fechamento do mês e relatórios, 15/11/2026). A `cmv/etapa-1` está igual à `main` (mais este commit de docs).
