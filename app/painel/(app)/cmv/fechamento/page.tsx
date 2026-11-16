@@ -10,7 +10,7 @@ import { getSessao } from "@/lib/cmv/sessao";
 import { createClient } from "@/lib/supabase/server";
 import { FecharMes, FormErp, ReabrirMes } from "./acoes";
 
-export const metadata: Metadata = { title: "Fechamento do mês" };
+export const metadata: Metadata = { title: "Fechamento" };
 
 const quando = (iso: string) => new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" }).format(new Date(iso));
 const valorCampo = (c: number | null) => (c === null ? "" : (c / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));

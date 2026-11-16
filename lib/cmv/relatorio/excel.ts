@@ -46,13 +46,15 @@ export async function gerarExcel(d: DadosFechamento): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
   wb.creator = "PZO";
   wb.company = "Oji Comércio de Alimentos";
-  wb.title = `Fechamento de CMV — ${tituloMes(d.competencia)}`;
+  wb.title = `Controladoria Oji · Fechamento de CMV — ${tituloMes(d.competencia)}`;
   wb.created = new Date(d.geradoEm);
   const nomeCat = new Map(d.categorias.map((c) => [c.id, c.nome]));
   const real = d.cmv.tipo === "real";
 
   // Resumo: pares indicador/valor (tabular, 3 colunas)
   const resumo: (string | number | Date | null)[][] = [
+    ["Ferramenta", "Controladoria Oji", null],
+    ["Empresa", "Oji Comércio de Alimentos · Oji · Shakai · Wabi", null],
     ["Relatório", "Fechamento de CMV", null],
     ["Mês", mesCurto(d.competencia), null],
     ["Situação", d.previa ? "PRÉVIA (mês aberto: os valores podem mudar)" : `Fechado${d.fechamento ? ` em ${new Date(d.fechamento.fechadoEm).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })} por ${d.fechamento.fechadoPor} (versão ${d.fechamento.versao})` : ""}`, null],

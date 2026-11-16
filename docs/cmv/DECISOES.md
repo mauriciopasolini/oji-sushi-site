@@ -402,3 +402,14 @@ As compras são concentradas na segunda (para seg–qui) e na sexta (para sex–
      - **CMV em R$ do histórico que só tem o %** (junho a setembro/2026): calculado como venda × %, marcado com "*" no PDF e "sim (venda × %)" no Excel. Outubro, que tem o R$ informado, fica como está.
      - Testes de cálculo: 195 (6 novos).
 
+## 2026-11-16 — Nome da ferramenta: Controladoria (pedido do Mauricio)
+
+118. **A ferramenta passa a se chamar "Controladoria Oji"; o CMV é um módulo dela.** A mudança é só de textos e metadados: **nenhuma URL ou rota muda** (`/painel`, `/painel/cmv` e as demais continuam iguais) e a landing não foi tocada (o link "Acesso equipe" continua igual).
+     - **Cabeçalho do painel**: "Oji · Controladoria" (era "Oji · CMV").
+     - **Título das abas**: modelo "%s · Controladoria Oji" (ex.: "Notas · Controladoria Oji", "Fechamento · Controladoria Oji", "Entrar · Controladoria Oji"); padrão "Controladoria Oji". A página de fechamento passou a se chamar "Fechamento". A página principal do módulo continua "CMV".
+     - **Atalho do celular**: manifest com `name` "Oji Controladoria" e `short_name` "Controladoria"; `applicationName` "Oji Controladoria"; `apple-mobile-web-app-title` "Controladoria". Os ícones continuam os mesmos (decisão 104). Quem já instalou o atalho pode precisar reinstalar para ver o nome novo (o celular guarda o nome da instalação).
+     - **"CMV" continua** onde é o indicador ou o módulo: CMV projetado, CMV por semana, CMV parcial, o relatório "Fechamento de CMV" e o item de menu do módulo.
+     - **PDF e Excel**: a linha "Controladoria Oji" aparece no topo, acima de "Oji Comércio de Alimentos · Oji · Shakai · Wabi". No PDF, também no cabeçalho das páginas 2 em diante e nos metadados (autor); no Excel, nas primeiras linhas da aba Resumo ("Ferramenta" e "Empresa") e no título do arquivo.
+     - **Documentos**: README e STATUS usam "Controladoria" para a ferramenta. Ainda não há e-mails, e os alertas do painel não citam o nome da ferramenta. O manual `docs/cmv/OPERACAO.md` (Etapa 8) vai nascer com o nome novo.
+     - As decisões antigas não foram reescritas: onde dizem "Oji CMV" ou "painel de CMV", valia o nome da época.
+

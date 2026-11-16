@@ -2,12 +2,12 @@ import type { Metadata, Viewport } from "next";
 import "./painel.css";
 
 export const metadata: Metadata = {
-  title: { default: "Painel · Oji", template: "%s · Painel Oji" },
+  title: { default: "Controladoria Oji", template: "%s · Controladoria Oji" },
   robots: { index: false, follow: false, nocache: true },
-  // Ícones do painel (placa com o ponto) e atalho "Oji CMV" (decisão 104).
+  // Ícones do painel (placa com o ponto) e atalho "Controladoria" (decisões 104 e 118).
   // Ficam em public/icones-painel/, fora de /painel, para não passar pelo login do proxy.
-  applicationName: "Oji CMV",
-  appleWebApp: { title: "Oji CMV", capable: true },
+  applicationName: "Oji Controladoria",
+  appleWebApp: { title: "Controladoria", capable: true },
   manifest: "/icones-painel/manifest.webmanifest",
   icons: {
     icon: [

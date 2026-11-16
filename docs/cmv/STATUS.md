@@ -1,6 +1,6 @@
-# Status do módulo de CMV
+# Status da Controladoria Oji (módulo de CMV)
 
-Atualizado em **15/11/2026**. Branch de trabalho: `cmv/etapa-1`. Produção: `main`, publicada em https://www.ojisushi.com.br.
+Atualizado em **16/11/2026**. A ferramenta se chama **Controladoria Oji**; o CMV é o primeiro módulo dela (decisão 118). As rotas continuam em `/painel/cmv`. Branch de trabalho: `cmv/etapa-1`. Produção: `main`, publicada em https://www.ojisushi.com.br.
 
 **Próximo passo: Etapa 8** (revisão final e `docs/cmv/OPERACAO.md`; pendência 10). Depois dela vem a Etapa 9, o DRE Gerencial no painel (pendência 12). Datas reais antes disso: itens de contagem com custo e ensaio com o Douglas antes de 29/11, contagem de fechamento em 29/11 e fechamento de novembro a partir de 01/12 (Etapa 7, já em produção).
 
@@ -24,7 +24,7 @@ O último merge na `main` é o `66729a4` (Etapa 7: fechamento do mês e relatór
 
 **Favicon e ícones (14/11/2026, decisões 104 e 105)**
 - Placa `#E8321A` com o símbolo "oji" em off-white; o painel tem um ponto escuro no canto. Gerador: `python scripts/gerar-icones.py`.
-- Painel: ícones e manifest "Oji CMV" em `public/icones-painel/` (fora de `/painel` por causa do login do proxy).
+- Painel: ícones e manifest "Oji Controladoria" (atalho "Controladoria", decisão 118) em `public/icones-painel/` (fora de `/painel` por causa do login do proxy).
 - O deploy pelo Git do commit `06ac7d9` não disparou (aviso de push perdido entre GitHub e Vercel; o push seguinte funcionou). Se repetir: preview manual com `vercel deploy` a partir de `git archive` (decisão 105).
 
 **Etapas 1 a 5 do `PROMPT.md`**
@@ -59,7 +59,7 @@ O último merge na `main` é o `66729a4` (Etapa 7: fechamento do mês e relatór
 
 ## 2. Só na branch, aguardando merge
 
-Nada.
+**Nome "Controladoria" (16/11/2026, decisão 118)**, aguardando o OK do Mauricio no preview. São só textos e metadados; nenhuma rota mudou.
 
 ## Corte do fechamento de novembro/2026 (decisão 110)
 
@@ -82,7 +82,7 @@ Nada.
 | 9 | **Etapa 7: fechamento do mês e PDF/Excel** | ✅ Em produção (merge `66729a4`). Primeiro uso real: 01/12/2026, fechamento de novembro. |
 | 10 | **Etapa 8: revisão final e `docs/cmv/OPERACAO.md`** | Também: tela de configurações (Etapa 9 do briefing). A mescla de fornecedores saiu na Etapa 6. |
 | 12 | **Etapa 9: DRE Gerencial no painel** (próxima depois da Etapa 8) | Meta: gerar o **DRE de dezembro/2026 pelo sistema**. O relatório da Etapa 7 se chama "Fechamento de CMV" (não é o DRE). O snapshot do fechamento já guarda o que o DRE vai usar: vendas por origem (restaurante × teles), por marca (Oji, Shakai e Wabi), por turno e por forma de pagamento do restaurante, além da base de cálculo e do total ERP (decisão 112). Faltam as despesas (mão de obra, ocupação, taxas e serviços), o comparativo e o texto de leitura. Referência de layout: `docs/cmv/referencias/DRE_Gerencial_Outubro2026.pdf` (local, fora do Git). |
-| 11 | **`theme-color` do painel** | Continua `#111111` (barra de status do atalho "Oji CMV" fica grafite). O manifest tem `#E8321A`; trocar a tag se o Mauricio quiser a barra vermelha. |
+| 11 | **`theme-color` do painel** | Continua `#111111` (barra de status do atalho "Controladoria" fica grafite). O manifest tem `#E8321A`; trocar a tag se o Mauricio quiser a barra vermelha. |
 
 ## 4. Decisões de hoje (em `docs/cmv/DECISOES.md`)
 
