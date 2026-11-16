@@ -4,11 +4,15 @@ Atualizado em **15/11/2026**. Branch de trabalho: `cmv/etapa-1`. Produção: `ma
 
 ## 1. Pronto e em produção
 
-O último merge na `main` é o `3ac1fcc` (favicon e ícones, 14/11/2026). A `cmv/etapa-1` está igual à `main` (mais este commit de docs).
+O último merge na `main` é o `73b3674` (itens de contagem, "Fechamento de" e corte de novembro, 15/11/2026). A `cmv/etapa-1` está igual à `main` (mais este commit de docs).
 
 **Landing**
 - Byte a byte igual à tag `estado-original`, com duas exceções autorizadas: o link "Acesso equipe" no rodapé (decisão 78) e as duas tags `<link>` de favicon no `<head>`, com `public/favicon.ico` e `public/apple-touch-icon.png` (decisão 104).
 - `scripts/verificar-landing.sh` confere isso. Passou em produção depois do merge `3ac1fcc` (14/11/2026). Em previews `*.vercel.app` ele usa o bypass de automação do `.env.local` (decisão 105).
+
+**Contagem: início do sistema e "Fechamento de" (15/11/2026, decisões 108 a 110)**: aprovados pelo Mauricio no preview e em produção (merge `73b3674`). O `verificar-landing.sh` passou em produção, e as rotas da contagem redirecionam para o login.
+- Sem aviso nem navegação antes de 11/2026. Título da tela: "Fechamento de novembro/2026".
+- "Fechamento de" separado da data: padrão pelo dia (dias 1 e 2 → mês anterior), troca só pelo admin, regra no banco (migração `20261116090000_contagem_fechamento_de.sql`, aplicada em 15/11).
 
 **Favicon e ícones (14/11/2026, decisões 104 e 105)**
 - Placa `#E8321A` com o símbolo "oji" em off-white; o painel tem um ponto escuro no canto. Gerador: `python scripts/gerar-icones.py`.
@@ -47,10 +51,7 @@ O último merge na `main` é o `3ac1fcc` (favicon e ícones, 14/11/2026). A `cmv
 
 ## 2. Só na branch, aguardando merge
 
-**Ajustes da contagem (15/11/2026, decisões 108 e 109)**, aguardando o OK do Mauricio no preview:
-- Sem aviso de "contagem não finalizada" para meses anteriores a 11/2026, e sem navegação para eles.
-- Campo "Fechamento de", com padrão pela data (dias 1 e 2 → mês anterior). Só o admin troca. O rascunho pode mudar de mês, com auditoria.
-- A migração `20261116090000_contagem_fechamento_de.sql` **já está aplicada** no banco compartilhado, e o código em produção é compatível com ela.
+Nada.
 
 ## Corte do fechamento de novembro/2026 (decisão 110)
 
