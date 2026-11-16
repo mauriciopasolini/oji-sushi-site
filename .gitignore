@@ -21,3 +21,6 @@ supabase/.branches/
 .DS_Store
 Thumbs.db
 npm-debug.log*
+
+# referências com dados financeiros (o repositório no GitHub é público)
+docs/cmv/referencias/*.pdf

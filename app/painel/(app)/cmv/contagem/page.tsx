@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { custoSugerido, formatarQuantidade, milesimos } from "@/lib/cmv/contagem";
-import { fimDoMes, listarCategorias } from "@/lib/cmv/dados";
-import { competenciaDe, hojeSP, montar, partes } from "@/lib/cmv/datas";
+import { custoSugerido, fechamentoPadrao, formatarQuantidade, mesAnteriorNoSistema, milesimos } from "@/lib/cmv/contagem";
+import { listarCategorias } from "@/lib/cmv/dados";
+import { competenciaDe, hojeSP, INICIO_SISTEMA, partes, somarMeses } from "@/lib/cmv/datas";
 import { centavos, formatarBRL } from "@/lib/cmv/dinheiro";
 import { getSessao } from "@/lib/cmv/sessao";
 import { createClient } from "@/lib/supabase/server";
@@ -14,12 +14,6 @@ const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julh
 const quando = (ts: string) =>
   new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" }).format(new Date(ts));
 
-function mesVizinho(competencia: string, delta: number) {
-  const { ano, mes } = partes(competencia);
-  const d = new Date(Date.UTC(ano, mes - 1 + delta, 1));
-  return montar(d.getUTCFullYear(), d.getUTCMonth() + 1, 1);
-}
-
 /** Valor em centavos a partir do custo gravado, para exibir sem casas desnecessárias no campo. */
 const custoParaCampo = (c: number | null) => (c === null || c === 0 ? "" : (c / 100).toFixed(2).replace(".", ","));
 
@@ -28,14 +22,19 @@ type ContagemRow = { id: string; status: "rascunho" | "finalizada"; data: string
 export default async function ContagemPage({ searchParams }: { searchParams: Promise<{ mes?: string }> }) {
   const sp = await searchParams;
   const hoje = hojeSP();
-  const competencia = /^\d{4}-\d{2}$/.test(sp.mes ?? "") ? `${sp.mes}-01` : competenciaDe(hoje);
-  const anterior = mesVizinho(competencia, -1);
+  // Sem mês na URL, abre o fechamento a que uma contagem feita hoje pertenceria:
+  // em 01/12 e 02/12, ainda novembro.
+  const padraoHoje = fechamentoPadrao(hoje);
+  const competencia = /^\d{4}-\d{2}$/.test(sp.mes ?? "") ? `${sp.mes}-01` : padraoHoje < INICIO_SISTEMA ? INICIO_SISTEMA : padraoHoje;
+  const anterior = somarMeses(competencia, -1);
+  const antesDoSistema = competencia < INICIO_SISTEMA;
   const sessao = await getSessao();
   const ehAdmin = sessao?.perfil?.papel === "admin";
   const supabase = await createClient();
 
   const [mesesQ, itensQ, categorias, contagensQ, historicoQ, perfisQ] = await Promise.all([
-    supabase.from("meses").select("id, competencia, status").in("competencia", [anterior, competencia]),
+    // Todos os meses (são poucos): o "Fechamento de" pode apontar para outro mês.
+    supabase.from("meses").select("id, competencia, status"),
     supabase.from("itens_contagem").select("id, nome, unidade, categoria_id, custo_unitario_ref, ordem, ativo").order("ordem").order("nome"),
     listarCategorias(supabase),
     supabase
@@ -86,26 +85,36 @@ export default async function ContagemPage({ searchParams }: { searchParams: Pro
 
   const nomePerfil = new Map((perfisQ.data ?? []).map((p) => [p.id, p.nome]));
   const { ano, mes: m } = partes(competencia);
-  const fim = fimDoMes(competencia);
-  const dataPadrao = contagem?.data ?? (hoje < fim ? hoje : fim);
-  const ehMesAtualOuAnterior = competencia === competenciaDe(hoje) || competencia === mesVizinho(competenciaDe(hoje), -1);
+  // Contagem nova: data de hoje; o "Fechamento de" sai da data (o formulário calcula).
+  const dataPadrao = contagem?.data ?? hoje;
+  const ehMesAtualOuAnterior = competencia === competenciaDe(hoje) || competencia === somarMeses(competenciaDe(hoje), -1);
+  // Só avisa sobre o mês anterior se ele estiver dentro do sistema (outubro/2026 não está).
   const contagemAnteriorPendente =
-    competencia === competenciaDe(hoje) && mesAnt && mesAnt.status === "aberto" && !contagens.some((c) => c.mes_id === mesAnt.id && c.status === "finalizada");
+    competencia === competenciaDe(hoje) &&
+    mesAnteriorNoSistema(competencia) &&
+    mesAnt &&
+    mesAnt.status === "aberto" &&
+    !contagens.some((c) => c.mes_id === mesAnt.id && c.status === "finalizada");
+  const mesesAbertos = (mesesQ.data ?? []).filter((x) => x.status === "aberto").map((x) => x.competencia as string);
 
   return (
     <main className="space-y-4 pb-40">
       <div className="flex items-center justify-between gap-2">
-        <Link href={`/painel/cmv/contagem?mes=${anterior.slice(0, 7)}`} className="rounded-lg px-2 py-1 text-neutral-500 hover:bg-neutral-100" aria-label="Mês anterior">
-          ←
-        </Link>
+        {anterior >= INICIO_SISTEMA ? (
+          <Link href={`/painel/cmv/contagem?mes=${anterior.slice(0, 7)}`} className="rounded-lg px-2 py-1 text-neutral-500 hover:bg-neutral-100" aria-label="Mês anterior">
+            ←
+          </Link>
+        ) : (
+          <span className="w-8" />
+        )}
         <div className="text-center">
           <h1 className="text-xl font-bold">Contagem de estoque</h1>
-          <p className="text-sm text-neutral-600 capitalize">
-            Fechamento de {MESES[m - 1]} {ano}
+          <p className="text-sm text-neutral-600">
+            Fechamento de {MESES[m - 1]}/{ano}
           </p>
         </div>
         {competencia < competenciaDe(hoje) ? (
-          <Link href={`/painel/cmv/contagem?mes=${mesVizinho(competencia, 1).slice(0, 7)}`} className="rounded-lg px-2 py-1 text-neutral-500 hover:bg-neutral-100" aria-label="Próximo mês">
+          <Link href={`/painel/cmv/contagem?mes=${somarMeses(competencia, 1).slice(0, 7)}`} className="rounded-lg px-2 py-1 text-neutral-500 hover:bg-neutral-100" aria-label="Próximo mês">
             →
           </Link>
         ) : (
@@ -131,7 +140,11 @@ export default async function ContagemPage({ searchParams }: { searchParams: Pro
         <div className="rounded-xl border border-neutral-200 bg-white px-3 py-2">
           <p className="text-neutral-500">Estoque inicial</p>
           <p className="font-semibold tabular-nums">{estoqueInicial !== null ? formatarBRL(estoqueInicial) : "—"}</p>
-          <p className="text-xs text-neutral-500">{contagemAnt ? `contagem de ${contagemAnt.data.slice(8, 10)}/${contagemAnt.data.slice(5, 7)}` : "sem contagem do mês anterior"}</p>
+          <p className="text-xs text-neutral-500">{contagemAnt
+              ? `contagem de ${contagemAnt.data.slice(8, 10)}/${contagemAnt.data.slice(5, 7)}`
+              : mesAnteriorNoSistema(competencia)
+                ? "sem contagem do mês anterior"
+                : "início do sistema: sem contagem anterior"}</p>
         </div>
         <div className="rounded-xl border border-neutral-200 bg-white px-3 py-2">
           <p className="text-neutral-500">Esta contagem</p>
@@ -148,7 +161,9 @@ export default async function ContagemPage({ searchParams }: { searchParams: Pro
         </div>
       </div>
 
-      {!mes ? (
+      {antesDoSistema ? (
+        <p className="rounded-2xl border border-neutral-200 bg-white px-4 py-8 text-center text-neutral-500">O sistema começa em novembro de 2026: não há contagem antes disso.</p>
+      ) : !mes ? (
         <p className="rounded-2xl border border-neutral-200 bg-white px-4 py-8 text-center text-neutral-500">Este mês ainda não existe no sistema.</p>
       ) : !itens.length ? (
         <div className="rounded-2xl border border-neutral-200 bg-white px-4 py-8 text-center">
@@ -165,6 +180,7 @@ export default async function ContagemPage({ searchParams }: { searchParams: Pro
         <FormContagem
           key={`${competencia}-${contagem?.status ?? "nova"}`}
           competencia={competencia}
+          mesesAbertos={mesesAbertos}
           contagemId={contagem?.id ?? null}
           finalizada={contagem?.status === "finalizada"}
           bloqueio={mes.status === "fechado" ? "O mês está fechado: a contagem não pode mais ser alterada." : !ehMesAtualOuAnterior && !contagem ? "Contagens só podem ser iniciadas para o mês atual ou o anterior." : null}

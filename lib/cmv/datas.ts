@@ -58,6 +58,16 @@ export function competenciaDe(d: DataCivil): DataCivil {
   return montar(ano, mes, 1);
 }
 
+/** Primeiro dia do mês `delta` meses depois (negativo = antes) da competência. */
+export function somarMeses(competencia: DataCivil, delta: number): DataCivil {
+  const { ano, mes } = partes(competencia);
+  const d = new Date(Date.UTC(ano, mes - 1 + delta, 1));
+  return montar(d.getUTCFullYear(), d.getUTCMonth() + 1, 1);
+}
+
+/** Primeiro mês controlado pelo sistema. Meses anteriores não têm notas, vendas nem contagem. */
+export const INICIO_SISTEMA: DataCivil = "2026-11-01";
+
 export function mesmoMes(a: DataCivil, b: DataCivil): boolean {
   return a.slice(0, 7) === b.slice(0, 7);
 }

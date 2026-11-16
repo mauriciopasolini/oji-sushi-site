@@ -1,14 +1,19 @@
 # Status do módulo de CMV
 
-Atualizado em **10/11/2026**. Branch de trabalho: `cmv/etapa-1`. Produção: `main`, publicada em https://www.ojisushi.com.br.
+Atualizado em **15/11/2026**. Branch de trabalho: `cmv/etapa-1`. Produção: `main`, publicada em https://www.ojisushi.com.br.
 
 ## 1. Pronto e em produção
 
-O último merge na `main` é o `46d0e32` (Etapa 6 e ajustes, 10/11/2026). A `cmv/etapa-1` está igual à `main` (mais este commit de docs).
+O último merge na `main` é o `3ac1fcc` (favicon e ícones, 14/11/2026). A `cmv/etapa-1` está igual à `main` (mais este commit de docs).
 
 **Landing**
-- Byte a byte igual à tag `estado-original`, com uma única exceção autorizada: o link "Acesso equipe" no rodapé (decisão 78).
-- `scripts/verificar-landing.sh` confere isso. Passou em produção depois de cada merge de hoje.
+- Byte a byte igual à tag `estado-original`, com duas exceções autorizadas: o link "Acesso equipe" no rodapé (decisão 78) e as duas tags `<link>` de favicon no `<head>`, com `public/favicon.ico` e `public/apple-touch-icon.png` (decisão 104).
+- `scripts/verificar-landing.sh` confere isso. Passou em produção depois do merge `3ac1fcc` (14/11/2026). Em previews `*.vercel.app` ele usa o bypass de automação do `.env.local` (decisão 105).
+
+**Favicon e ícones (14/11/2026, decisões 104 e 105)**
+- Placa `#E8321A` com o símbolo "oji" em off-white; o painel tem um ponto escuro no canto. Gerador: `python scripts/gerar-icones.py`.
+- Painel: ícones e manifest "Oji CMV" em `public/icones-painel/` (fora de `/painel` por causa do login do proxy).
+- O deploy pelo Git do commit `06ac7d9` não disparou (aviso de push perdido entre GitHub e Vercel; o push seguinte funcionou). Se repetir: preview manual com `vercel deploy` a partir de `git archive` (decisão 105).
 
 **Etapas 1 a 5 do `PROMPT.md`**
 - Login, papéis (admin e gestor) e troca de senha obrigatória.
@@ -31,7 +36,7 @@ O último merge na `main` é o `46d0e32` (Etapa 6 e ajustes, 10/11/2026). A `cmv
 - `/painel/cmv/contagem` (gestor e admin) e `/painel/cmv/contagem/itens` (admin): cadastro de itens, contagem no celular com rascunho automático e finalização. A contagem finalizada entra no CMV real (estoque inicial/final).
 - Ajustes: tipo de documento e forma de pagamento padrão por fornecedor (preenchem o lançamento); correção de tipo/pagamento direto na conferência ("ajuste na conferência", sem reabrir a conferência); reabertura de contagem confirmada; rascunho fora de qualquer cálculo (`estoqueDoMes`, com teste).
 - **As migrações `20261112090000_etapa6_fornecedores_contagem.sql` e `20261113090000_padroes_fornecedor_ajuste_conferencia.sql` já estão aplicadas no banco compartilhado** (são aditivas; decisões 99 e 100).
-- **Prazo:** os itens de contagem precisam estar cadastrados antes de 30/11 (primeira contagem real).
+- **Itens de contagem cadastrados em 15/11/2026** (30 itens da `docs/cmv/referencias/lista-contagem-estoque.md`, decisão 107), sem custo de referência e sem nenhuma contagem. Antes da 1ª contagem real (domingo 29/11, decisão 110): confirmar as unidades de compra, preencher os custos e fazer o ensaio com o Douglas (rascunho, sem finalizar).
 - Conferido em produção depois do merge: `verificar-landing.sh` passou (landing byte a byte + link "Acesso equipe"; arquivos internos dão 404; `noindex` no painel), e todas as rotas do painel, inclusive as novas, redirecionam para o login. **Falta o Mauricio abrir logado** Painel, Conferência, Fornecedores e Contagem em produção: o Claude não tem acesso de login e não conseguiu confirmar por fora que o build novo já está no ar.
 
 **Dados reais no banco**
@@ -42,22 +47,32 @@ O último merge na `main` é o `46d0e32` (Etapa 6 e ajustes, 10/11/2026). A `cmv
 
 ## 2. Só na branch, aguardando merge
 
-Nada.
+**Ajustes da contagem (15/11/2026, decisões 108 e 109)**, aguardando o OK do Mauricio no preview:
+- Sem aviso de "contagem não finalizada" para meses anteriores a 11/2026, e sem navegação para eles.
+- Campo "Fechamento de", com padrão pela data (dias 1 e 2 → mês anterior). Só o admin troca. O rascunho pode mudar de mês, com auditoria.
+- A migração `20261116090000_contagem_fechamento_de.sql` **já está aplicada** no banco compartilhado, e o código em produção é compatível com ela.
+
+## Corte do fechamento de novembro/2026 (decisão 110)
+
+- **Domingo 29/11, após o expediente:** contagem de fechamento de novembro (data 29/11 → "Fechamento de" novembro, sem troca).
+- **Compras recebidas na segunda 30/11 vão para dezembro:** o Douglas lança **na terça 01/12**, com data 01/12 e observação "recebida em 30/11 — corte de estoque, competência dezembro". Data futura não é aceita na nota.
+- Novembro fecha com o CMV de compras; o CMV real começa em dezembro. Não há estoque inicial estimado.
 
 ## 3. Pendências abertas
 
 | # | Pendência | Situação / o que se sabe |
 |---|---|---|
-| 1 | **Loop de redirecionamento no preview** | Relatado pelo Mauricio; não investigado nesta sessão. Ao retomar: reproduzir no alias do preview (`oji-sushi-site-git-cmv-etapa-1-mauricio-s-projects17.vercel.app`), olhar `proxy.ts` (redireciona `/painel` ↔ `/painel/login`) e a proteção de deploy da Vercel (o preview pode exigir login da Vercel antes do app). |
+| 1 | **Loop de redirecionamento no preview** | Relatado pelo Mauricio; não investigado. Em 14/11 os previews responderam 302 para o login da Vercel (Deployment Protection), o que pode ser a origem; com o bypass (decisão 105) dá para testar o app sem login na Vercel. Ao retomar: reproduzir no alias do preview (`oji-sushi-site-git-cmv-etapa-1-mauricio-s-projects17.vercel.app`), olhar `proxy.ts` (redireciona `/painel` ↔ `/painel/login`) e a proteção de deploy da Vercel (o preview pode exigir login da Vercel antes do app). |
 | 2 | **Restringir o `limpar-teste`** | O script (`scripts/limpar-dados-teste.mjs`) já pede código de confirmação. Falta limitar o que ele pode apagar (ex.: só registros marcados como teste ou criados por usuários de teste), agora que há dados reais. |
 | 3 | **Limpeza pontual das notas de teste** | ✅ **Concluída hoje.** Foram apagadas 5 notas canceladas (1 Frumar de R$ 121,00 em 09/11 e 4 "TESTE AUTOMATIZADO" de 06/2027), 10 registros de histórico, 1 foto e o mês 06/2027. Tudo numa transação, com conferência das vendas (R$ 30.670,84 intactos). |
 | 4 | **Troca de foto na edição** | Relatado pelo Mauricio; detalhe a confirmar com ele. Hoje a edição aceita foto nova com nome novo (a antiga fica no bucket e na auditoria; a página da nota lista "Fotos anteriores"). A foto vai para a pasta do mês da data da nota. |
 | 5 | **Backup semanal** | Não iniciado. Definir o que copiar (banco e bucket `notas`), para onde e quem roda. O Supabase CLI não roda nesta máquina (Smart App Control), então o backup deve usar `pg_dump`/biblioteca `postgres` ou um agendamento na nuvem. |
 | 6 | **Banco separado para o preview** | Não iniciado. Hoje preview e produção usam o **mesmo** Supabase (`zjmzujzgwgkplghszuyi`): o que se lança no preview vai para o banco real e as migrações valem para os dois na hora em que são aplicadas. |
 | 7 | **Cores da coluna Total em Vendas** | ✅ **Concluída hoje** e em produção (decisão 81). Falta só ver num celular de verdade o comportamento ao tocar. |
-| 8 | **Etapa 6: conferência, fornecedores e contagem** | ✅ Em produção (merge `46d0e32`). A fazer: o Mauricio confere as telas logado em produção e cadastra os itens de contagem; a 1ª contagem real é em 30/11/2026. As 39 notas lançadas como NF-e/caixa podem ser corrigidas na conferência. |
+| 8 | **Etapa 6: conferência, fornecedores e contagem** | ✅ Em produção (merge `46d0e32`). A fazer: o Mauricio confere as telas logado em produção e cadastra os itens de contagem; a 1ª contagem real é no domingo 29/11/2026 (decisão 110). As 39 notas lançadas como NF-e/caixa podem ser corrigidas na conferência. |
 | 9 | **Etapa 7: fechamento do mês e PDF/Excel** | Checklist do fechamento: zero compras aguardando nota fiscal ou uma justificativa por pendente (o banco já recusa fechar sem isso: decisão 86). Incluir no relatório a tabela "CMV por semana" (`calcularCmvSemanas`, decisão 89). |
 | 10 | **Etapa 8: revisão final e `docs/cmv/OPERACAO.md`** | Também: tela de configurações (Etapa 9 do briefing). A mescla de fornecedores saiu na Etapa 6. |
+| 11 | **`theme-color` do painel** | Continua `#111111` (barra de status do atalho "Oji CMV" fica grafite). O manifest tem `#E8321A`; trocar a tag se o Mauricio quiser a barra vermelha. |
 
 ## 4. Decisões de hoje (em `docs/cmv/DECISOES.md`)
 
@@ -81,6 +96,9 @@ Nada.
   - o estoque no CMV real;
   - a migração aplicada antes do merge.
 - **100 a 103:** padrões de documento e pagamento por fornecedor, ajuste na conferência, reabertura de contagem e rascunho fora dos cálculos.
+- **106 e 107:** PDFs de referência fora do Git (repositório público) e cadastro dos 30 itens de contagem.
+- **108 e 109:** início do sistema (11/2026) na contagem e campo "Fechamento de", com a regra no banco.
+- **110:** corte de novembro: contagem em 29/11 e compras de 30/11 lançadas em 01/12.
 
 ## 5. Como retomar
 
@@ -100,9 +118,9 @@ Na Vercel (Production e Preview) estão todas, menos `SUPABASE_DB_URL`. Para env
 ```sh
 git checkout cmv/etapa-1 && git pull
 npm install
-npm run db:status          # migrações aplicadas (10, até 20261113090000_padroes_fornecedor_ajuste_conferencia.sql)
-npm test                   # 162 testes de cálculo
-npm run db:test-rls        # 95 testes de regras no banco (transação desfeita: não grava nada)
+npm run db:status          # migrações aplicadas (11, até 20261116090000_contagem_fechamento_de.sql)
+npm test                   # 169 testes de cálculo
+npm run db:test-rls        # 107 testes de regras no banco (transação desfeita: não grava nada)
 npm run typecheck
 npm run build && npx next start -p 3123   # servidor local
 sh scripts/verificar-landing.sh http://localhost:3123

@@ -50,6 +50,23 @@ async function deve(tx, nome, fn, verificar = () => true) {
   }
 }
 
+/** Como deve(), mas desfaz o que fn gravou (savepoint revertido), para não ocupar o mês nos testes seguintes. */
+const DESFAZER = new Error("desfazer");
+async function deveDesfeito(tx, nome, fn, verificar = () => true) {
+  let r;
+  try {
+    await tx.savepoint(async (sp) => {
+      r = await fn(sp);
+      await sp`reset role`;
+      throw DESFAZER;
+    });
+  } catch (e) {
+    if (e !== DESFAZER) return registrar(false, nome, `erro: ${e.message}`);
+  }
+  const v = verificar(r);
+  registrar(v === true, nome, v === true ? "" : `resultado inesperado: ${JSON.stringify(r)?.slice(0, 160)}`);
+}
+
 /** Espera que fn falhe (opcionalmente com mensagem contendo `trecho`). */
 async function naoDeve(tx, nome, fn, trecho) {
   try {
@@ -393,7 +410,12 @@ try {
     }, "está fechado");
 
     console.log("\nContagem de estoque (Etapa 6)");
-    const [{ id: dez }] = await tx`select id from public.meses where competencia = '2026-12-01'`;
+    // Meses de teste no passado (criados e desfeitos nesta transação): datas fixas, nunca
+    // no futuro, sem colidir com contagens reais. "dez" aqui é 03/2020, com data 20/03/2020.
+    const [{ id: dez }] = await tx`insert into public.meses (competencia) values ('2020-03-01') returning id`;
+    const [{ id: fev20 }] = await tx`insert into public.meses (competencia) values ('2020-02-01') returning id`;
+    const [{ id: jan20 }] = await tx`insert into public.meses (competencia) values ('2020-01-01') returning id`;
+    const D = "2020-03-20";
     await naoDeve(tx, "gestor NÃO cadastra item de contagem", async (sp) => { await comoUsuario(sp, U.gestor); await sp`insert into public.itens_contagem (nome, unidade, categoria_id) values ('Salmão', 'kg', ${pescados})`; }, "row-level security");
     await comoUsuario(tx, U.admin);
     const [it1] = await tx`insert into public.itens_contagem (nome, unidade, categoria_id, custo_unitario_ref) values ('  Teste   Salmão ', 'kg', ${pescados}, 89.90) returning id, nome`;
@@ -403,10 +425,10 @@ try {
     await naoDeve(tx, "item com nome repetido (caixa/espaços) é recusado", async (sp) => { await comoUsuario(sp, U.admin); await sp`insert into public.itens_contagem (nome, unidade, categoria_id) values ('teste salmão', 'kg', ${pescados})`; }, "duplicate key");
     await naoDeve(tx, "contagem com data futura é recusada", async (sp) => { await comoUsuario(sp, U.gestor); await sp`insert into public.contagens (mes_id, data) values (${dez}, '2099-01-01')`; }, "futuro");
     await comoUsuario(tx, U.gestor);
-    const [cont] = await tx`insert into public.contagens (mes_id, data, status) values (${dez}, current_date - 1, 'finalizada') returning id, status, realizada_por`;
+    const [cont] = await tx`insert into public.contagens (mes_id, data, status) values (${dez}, ${D}, 'finalizada') returning id, status, realizada_por`;
     await tx`reset role`;
     registrar(cont.status === "rascunho" && cont.realizada_por === U.gestor, "gestor cria contagem → sempre nasce rascunho");
-    await naoDeve(tx, "segunda contagem de fechamento no mesmo mês é recusada", async (sp) => { await comoUsuario(sp, U.gestor); await sp`insert into public.contagens (mes_id, data) values (${dez}, current_date - 1)`; }, "duplicate key");
+    await naoDeve(tx, "segunda contagem de fechamento no mesmo mês é recusada", async (sp) => { await comoUsuario(sp, U.gestor); await sp`insert into public.contagens (mes_id, data) values (${dez}, ${D})`; }, "duplicate key");
     await naoDeve(tx, "contagem sem itens NÃO é finalizada", async (sp) => { await comoUsuario(sp, U.gestor); await sp`update public.contagens set status = 'finalizada' where id = ${cont.id}`; }, "nenhum item");
     await deve(tx, "gestor lança itens e finaliza → valor = qtd × custo; auditoria 'finalize' com o total", async (sp) => {
       await comoUsuario(sp, U.gestor);
@@ -443,6 +465,63 @@ try {
       await comoUsuario(sp, U.admin);
       await sp`update public.contagem_itens set quantidade = 2 where contagem_id = ${cont.id}`;
     }, "está fechado");
+
+    console.log("\nContagem: \"Fechamento de\" (decisão 109)");
+    await deve(tx, "padrão do fechamento: 30/11 → nov; 01/12 e 02/12 → nov; 03/12 e 15/12 → dez; 01/01 → dez", async (sp) =>
+      sp`select interno.fechamento_padrao(d)::text f from unnest(array['2026-11-30','2026-12-01','2026-12-02','2026-12-03','2026-12-15','2027-01-01']::date[]) d`,
+      (r) => r.map((x) => x.f).join() === "2026-11-01,2026-11-01,2026-11-01,2026-12-01,2026-12-01,2026-12-01");
+    await deveDesfeito(tx, "gestor: contagem de 01/02 → fechamento de janeiro (padrão)", async (sp) => {
+      await comoUsuario(sp, U.gestor);
+      return sp`insert into public.contagens (mes_id, data) values (${jan20}, '2020-02-01') returning id`;
+    }, (r) => r.length === 1);
+    await naoDeve(tx, "gestor NÃO põe a contagem de 01/02 em fevereiro (fora do padrão)", async (sp) => { await comoUsuario(sp, U.gestor); await sp`insert into public.contagens (mes_id, data) values (${fev20}, '2020-02-01')`; }, "Só o administrador");
+    await deveDesfeito(tx, "admin põe a contagem de 01/02 em fevereiro (troca permitida)", async (sp) => {
+      await comoUsuario(sp, U.admin);
+      return sp`insert into public.contagens (mes_id, data) values (${fev20}, '2020-02-01') returning id`;
+    }, (r) => r.length === 1);
+    await deveDesfeito(tx, "admin registra contagem atrasada: 15/02 como fechamento de janeiro", async (sp) => {
+      await comoUsuario(sp, U.admin);
+      return sp`insert into public.contagens (mes_id, data) values (${jan20}, '2020-02-15') returning id`;
+    }, (r) => r.length === 1);
+    await naoDeve(tx, "nem o admin põe uma contagem de 20/01 no fechamento de fevereiro", async (sp) => { await comoUsuario(sp, U.admin); await sp`insert into public.contagens (mes_id, data) values (${fev20}, '2020-01-20')`; }, "só pode ser o fechamento");
+    await naoDeve(tx, "nem o admin põe uma contagem de 20/03 no fechamento de janeiro (2 meses antes)", async (sp) => { await comoUsuario(sp, U.admin); await sp`insert into public.contagens (mes_id, data) values (${jan20}, '2020-03-20')`; }, "só pode ser o fechamento");
+    await naoDeve(tx, "gestor NÃO muda a data do rascunho para fora do padrão do mês", async (sp) => {
+      await comoUsuario(sp, U.gestor);
+      const [c] = await sp`insert into public.contagens (mes_id, data) values (${fev20}, '2020-02-20') returning id`;
+      await sp`update public.contagens set data = '2020-03-01' where id = ${c.id}`; // padrão de 01/03 = fevereiro: ok
+      await sp`update public.contagens set data = '2020-03-03' where id = ${c.id}`; // padrão de 03/03 = março: recusa
+    }, "Só o administrador");
+    await deveDesfeito(tx, "admin move o rascunho de mês → mes_id muda e auditoria 'update' registra", async (sp) => {
+      await comoUsuario(sp, U.gestor);
+      const [c] = await sp`insert into public.contagens (mes_id, data) values (${jan20}, '2020-02-01') returning id`;
+      await sp`reset role`;
+      await comoUsuario(sp, U.admin);
+      await sp`update public.contagens set mes_id = ${fev20} where id = ${c.id}`;
+      await sp`reset role`;
+      const [x] = await sp`select mes_id from public.contagens where id = ${c.id}`;
+      const [a] = await sp`select motivo, antes->>'mes_id' antes, depois->>'mes_id' depois from public.auditoria where tabela = 'contagens' and registro_id = ${c.id} and acao = 'update'`;
+      return { mes: x.mes_id, a };
+    }, (r) => r.mes === fev20 && r.a?.antes === jan20 && r.a?.depois === fev20 && r.a?.motivo === "mês de fechamento alterado");
+    await deveDesfeito(tx, "gestor continua editando itens de um rascunho que o admin pôs fora do padrão", async (sp) => {
+      await comoUsuario(sp, U.admin);
+      const [c] = await sp`insert into public.contagens (mes_id, data) values (${fev20}, '2020-02-01') returning id`;
+      await sp`reset role`;
+      await comoUsuario(sp, U.gestor);
+      await sp`insert into public.contagem_itens (contagem_id, item_id, quantidade, custo_unitario) values (${c.id}, ${it1.id}, 1, 10)`;
+      return sp`update public.contagens set status = 'finalizada' where id = ${c.id} returning status`;
+    }, (r) => r[0]?.status === "finalizada");
+    await naoDeve(tx, "contagem finalizada NÃO muda de mês (nem admin)", async (sp) => {
+      await comoUsuario(sp, U.admin);
+      const [c] = await sp`insert into public.contagens (mes_id, data) values (${jan20}, '2020-01-20') returning id`;
+      await sp`insert into public.contagem_itens (contagem_id, item_id, quantidade, custo_unitario) values (${c.id}, ${it1.id}, 1, 10)`;
+      await sp`update public.contagens set status = 'finalizada' where id = ${c.id}`;
+      await sp`update public.contagens set mes_id = ${fev20}, data = '2020-02-01' where id = ${c.id}`;
+    }, "finalizada");
+    await naoDeve(tx, "mover rascunho para um mês que já tem contagem continua recusado", async (sp) => {
+      await comoUsuario(sp, U.admin);
+      const [c] = await sp`insert into public.contagens (mes_id, data) values (${fev20}, '2020-03-02') returning id`;
+      await sp`update public.contagens set mes_id = ${dez} where id = ${c.id}`;
+    }, "duplicate key");
 
     console.log("\nSincronização e conflitos");
     const [conf] = await tx`insert into public.conflitos_venda (data, turno, origem, valores_manual, valores_planilha, total_manual, total_planilha, assinatura_planilha)
