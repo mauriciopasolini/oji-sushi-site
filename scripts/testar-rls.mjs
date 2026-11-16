@@ -163,7 +163,7 @@ try {
       await comoUsuario(sp, U.gestor);
       return sp`insert into public.vendas_turno (data, turno, origem, dinheiro, pix) values ('2027-06-15', 1, 'restaurante', 100.10, 50.25) returning total_calculado`;
     }, (r) => Number(r[0].total_calculado) === 150.35);
-    await naoDeve(tx, "gestor NÃO fecha o mês", async (sp) => { await comoUsuario(sp, U.gestor); await sp`select public.fechar_mes(${nov})`; }, "administrador");
+    await naoDeve(tx, "gestor NÃO fecha o mês", async (sp) => { await comoUsuario(sp, U.gestor); await sp`select public.fechar_mes(${nov}, '{}'::jsonb, '{}'::jsonb)`; }, "administrador");
 
     console.log("\nAdmin");
     await deve(tx, "admin confere nota → conferida_por = admin", async (sp) => {
@@ -187,24 +187,17 @@ try {
     await deve(tx, "compra sem nota entra ativa (conta no orçamento pela data de chegada)", async (sp) => sp`select status, tipo, mes_id from public.notas where id = ${pendente}`, (r) => r[0].status === "ativa" && r[0].tipo === "sem_nota" && r[0].mes_id === nov);
     // Pendências reais de novembro (se houver) recebem justificativa só dentro desta transação desfeita.
     await tx`update public.notas set pendencia_justificativa = 'teste rls' where mes_id = ${nov} and tipo = 'sem_nota' and status = 'ativa' and id <> ${pendente} and pendencia_justificativa is null`;
-    await naoDeve(tx, "admin NÃO fecha o mês com compra sem nota e sem justificativa", async (sp) => { await comoUsuario(sp, U.admin); await sp`select public.fechar_mes(${nov})`; }, "aguardando nota fiscal");
+    await naoDeve(tx, "admin NÃO fecha o mês com compra sem nota e sem justificativa", async (sp) => { await comoUsuario(sp, U.admin); await sp`select public.fechar_mes(${nov}, '{}'::jsonb, '{}'::jsonb)`; }, "aguardando nota fiscal");
     await naoDeve(tx, "gestor NÃO justifica pendência existente", async (sp) => { await comoUsuario(sp, U.gestor); await sp`update public.notas set pendencia_justificativa = 'x' where id = ${pendente}`; }, "administrador");
     // (os savepoints de deve() são liberados, não desfeitos: os passos abaixo se encadeiam)
     await deve(tx, "admin justifica a pendência sem motivo de edição; a conferência não é reaberta", async (sp) => {
       await comoUsuario(sp, U.admin);
       return sp`update public.notas set pendencia_justificativa = '  fornecedor informal, não emite nota  ' where id = ${pendente} returning pendencia_justificativa, conferencia`;
     }, (r) => r[0].pendencia_justificativa === "fornecedor informal, não emite nota" && r[0].conferencia === "pendente");
-    await deve(tx, "mês com a pendente justificada pode ser fechado (checagem feita e desfeita aqui)", async (sp) => {
-      await comoUsuario(sp, U.admin);
-      await sp`select public.fechar_mes(${nov})`;
-      await sp`reset role`;
-      const [m] = await sp`select status from public.meses where id = ${nov}`;
-      // volta a abrir para os testes seguintes
-      await sp`select set_config('cmv.permitir_status', 'on', true)`;
-      await sp`update public.meses set status = 'aberto', fechado_por = null, fechado_em = null where id = ${nov}`;
-      await sp`select set_config('cmv.permitir_status', 'off', true)`;
-      return m.status;
-    }, (r) => r === "fechado");
+    // O fechamento completo (checklist + snapshot) é testado no bloco "Fechamento do mês (Etapa 7)".
+    await deve(tx, "com a pendente justificada, o checklist do banco não acusa mais compra sem nota", async (sp) =>
+      sp`select interno.pendencias_fechamento(${nov}) p`,
+      (r) => !r[0].p.some((x) => x.includes("aguardando nota fiscal")));
     await deve(tx, "nota fiscal chegou: gestor troca tipo, número, foto e valor com motivo → auditoria guarda a foto antiga; justificativa limpa", async (sp) => {
       await comoUsuario(sp, U.gestor);
       const [n2] = await sp`update public.notas set tipo = 'nfe', numero = '4521', foto_path = '2026/11/nf.jpg', valor = 512.40, motivo_edicao = 'Nota fiscal recebida' where id = ${pendente} returning pendencia_justificativa, status`;
@@ -213,13 +206,13 @@ try {
       return { ...a, just: n2.pendencia_justificativa, status: n2.status };
     }, (r) => r.antes === "2026/11/romaneio.jpg" && r.depois === "2026/11/nf.jpg" && r.tipo_antes === "sem_nota" && r.motivo === "Nota fiscal recebida" && r.just === null && r.status === "ativa");
 
-    // Fecha novembro (fora de savepoint) para os testes de mês fechado.
-    // A pendente acima já virou NF-e: o fechamento passa.
-    await comoUsuario(tx, U.admin);
-    await tx`select public.fechar_mes(${nov})`;
-    await tx`reset role`;
+    // Fecha novembro DIRETO (fora de savepoint, sem o checklist: o mês real ainda não
+    // terminou) para os testes de mês fechado. fechar_mes() completo: bloco da Etapa 7.
+    await tx`select set_config('cmv.permitir_status', 'on', true)`;
+    await tx`update public.meses set status = 'fechado', fechado_por = ${U.admin}, fechado_em = now() where id = ${nov}`;
+    await tx`select set_config('cmv.permitir_status', 'off', true)`;
     const [m] = await tx`select status, fechado_por from public.meses where id = ${nov}`;
-    registrar(m.status === "fechado" && m.fechado_por === U.admin, "admin fecha novembro via fechar_mes()");
+    registrar(m.status === "fechado" && m.fechado_por === U.admin, "novembro fechado (direto) para os testes de mês fechado");
 
     console.log("\nMês fechado (garantido no banco)");
     await naoDeve(tx, "gestor NÃO lança nota em mês fechado", async (sp) => { await comoUsuario(sp, U.gestor); await novaNota(sp); }, "está fechado");
@@ -522,6 +515,116 @@ try {
       const [c] = await sp`insert into public.contagens (mes_id, data) values (${fev20}, '2020-03-02') returning id`;
       await sp`update public.contagens set mes_id = ${dez} where id = ${c.id}`;
     }, "duplicate key");
+
+    console.log("\nFechamento do mês (Etapa 7): checklist, snapshot e reabertura");
+    // Meses fictícios de 2020 (criados e desfeitos nesta transação).
+    const [{ id: abr20 }] = await tx`insert into public.meses (competencia, venda_base_erp) values ('2020-04-01', 9000) returning id`;
+    const [{ id: mai20 }] = await tx`insert into public.meses (competencia) values ('2020-05-01') returning id`;
+    const snap = (assinatura, extra = {}) =>
+      JSON.stringify({ formato: 1, competencia: "2020-04-01", previa: false, assinatura, base: { base: 900000 }, cmv: { valor: 300000, pct: 0.333333, tipo: "compras" }, ...extra });
+    const assinaturaDe = async (sp, id) => (await sp`select interno.assinatura_fechamento(${id}) a`)[0].a;
+    // Abril/2020 com uma pendência de cada tipo:
+    await comoUsuario(tx, U.gestor);
+    const [fNovo] = await tx`insert into public.fornecedores (nome, categoria_padrao_id) values ('Teste Fornecedor Fechamento', ${pescados}) returning id, revisado_em`;
+    const [nAbr] = await tx`insert into public.notas ${tx({ data_emissao: "2020-04-10", fornecedor_id: fNovo.id, categoria_id: pescados, valor: 2000, foto_path: "2020/04/a.jpg" })} returning id`;
+    const [nSem] = await tx`insert into public.notas ${tx({ data_emissao: "2020-04-11", fornecedor_id: frumar, categoria_id: pescados, valor: 1000, foto_path: "2020/04/b.jpg", tipo: "sem_nota", observacao: "romaneio" })} returning id`;
+    const [cAbr] = await tx`insert into public.contagens (mes_id, data) values (${abr20}, '2020-04-30') returning id`;
+    await tx`reset role`;
+    await tx`insert into public.vendas_turno (data, turno, origem, pix, fonte) select d::date, 1, 'restaurante', 300, 'planilha' from generate_series('2020-04-01'::date, '2020-04-28'::date, interval '1 day') d`;
+    const [confl] = await tx`insert into public.conflitos_venda (data, turno, origem, valores_manual, valores_planilha, total_manual, total_planilha, assinatura_planilha)
+      values ('2020-04-05', 1, 'restaurante', '{}', '{}', 300, 310, 'x') returning id`;
+    await comoUsuario(tx, U.admin);
+    const [itF] = await tx`insert into public.itens_contagem (nome, unidade, categoria_id) values ('Teste Item Fechamento', 'kg', ${pescados}) returning id`;
+    await tx`reset role`;
+
+    await deve(tx, "checklist no banco lista cada pendência (dias, conflito, contagem, conferência, sem nota, fornecedor novo)", async (sp) =>
+      sp`select interno.pendencias_fechamento(${abr20}) p`,
+      (r) => {
+        const p = r[0].p.join(" | ");
+        return fNovo.revisado_em === null && ["2 dia(s) sem venda", "1 conflito(s)", "contagem de fechamento não finalizada", "2 nota(s) pendente(s) de conferência", "1 compra(s) aguardando nota fiscal", "1 fornecedor(es) novo(s)"].every((t) => p.includes(t)) && !p.includes("ERP") && !p.includes("só termina");
+      });
+    await deve(tx, "checklist: mês sem ERP e sem nenhuma venda; mês corrente ainda não terminou", async (sp) => {
+      const [a] = await sp`select interno.pendencias_fechamento(${mai20}) p`;
+      const [b] = await sp`select interno.pendencias_fechamento(${nov}) p`;
+      return { mai: a.p.join(" | "), nov: b.p.join(" | ") };
+    }, (r) => r.mai.includes("31 dia(s) sem venda") && r.mai.includes("total ERP + delivery não informado") && r.nov.includes("o mês só termina em 30/11/2026"));
+    await naoDeve(tx, "admin NÃO fecha com pendências (mensagem lista o que falta)", async (sp) => {
+      await comoUsuario(sp, U.admin);
+      await sp`select public.fechar_mes(${abr20}, ${snap({})}::jsonb, '{}'::jsonb)`;
+    }, "Não é possível fechar o mês: 2 dia(s) sem venda");
+
+    // Resolve tudo: 29/04 manual, 30/04 só com aba sincronizada ("sem movimento" pela planilha).
+    await tx`insert into public.vendas_turno (data, turno, origem, dinheiro) values ('2020-04-29', 1, 'restaurante', 0)`;
+    await tx`insert into public.fechamento_turno (data, turno) values ('2020-04-30', 1)`;
+    await comoUsuario(tx, U.admin);
+    await tx`update public.conflitos_venda set resolucao = 'usar_planilha' where id = ${confl.id}`;
+    await tx`insert into public.contagem_itens (contagem_id, item_id, quantidade, custo_unitario) values (${cAbr.id}, ${itF.id}, 10, 50)`;
+    await tx`update public.contagens set status = 'finalizada' where id = ${cAbr.id}`;
+    await tx`update public.notas set pendencia_justificativa = 'fornecedor informal' where id = ${nSem.id}`;
+    await tx`update public.notas set conferencia = 'conferida' where id in (${nAbr.id}, ${nSem.id})`;
+    await tx`update public.fornecedores set revisado_em = now(), revisado_por = ${U.admin} where id = ${fNovo.id}`;
+    await tx`reset role`;
+    await deve(tx, "tudo resolvido → checklist vazio", async (sp) => sp`select interno.pendencias_fechamento(${abr20}) p`, (r) => r[0].p.length === 0);
+    await deve(tx, "assinatura do banco em centavos inteiros (notas, vendas, ERP, estoques)", async (sp) => assinaturaDe(sp, abr20),
+      (a) => a.notas === 2 && a.notasTotal === 300000 && a.vendasTotal === 28 * 30000 && a.erp === 900000 && a.estoqueFinal === 50000 && a.estoqueInicial === null);
+    await naoDeve(tx, "gestor NÃO fecha o mês pronto", async (sp) => {
+      const a = await assinaturaDe(sp, abr20);
+      await comoUsuario(sp, U.gestor);
+      await sp`select public.fechar_mes(${abr20}, ${snap(a)}::text::jsonb, ${JSON.stringify(a)}::text::jsonb)`;
+    }, "administrador");
+    await naoDeve(tx, "dados mudaram depois de montar o snapshot (ERP alterado) → recusa", async (sp) => {
+      const a = await assinaturaDe(sp, abr20);
+      await comoUsuario(sp, U.admin);
+      await sp`update public.meses set venda_base_erp = 9100 where id = ${abr20}`;
+      await sp`select public.fechar_mes(${abr20}, ${snap(a)}::text::jsonb, ${JSON.stringify(a)}::text::jsonb)`;
+    }, "mudaram");
+    await naoDeve(tx, "snapshot de outro mês ou de prévia → recusa", async (sp) => {
+      const a = await assinaturaDe(sp, abr20);
+      await comoUsuario(sp, U.admin);
+      await sp`select public.fechar_mes(${abr20}, ${snap(a, { previa: true })}::jsonb, ${JSON.stringify(a)}::text::jsonb)`;
+    }, "Snapshot do fechamento inválido");
+    const assinAbr = await assinaturaDe(tx, abr20);
+    await deve(tx, "admin fecha: snapshot versão 1 gravado, mês fechado e auditoria 'close' com a versão", async (sp) => {
+      await comoUsuario(sp, U.admin);
+      const [{ v }] = await sp`select public.fechar_mes(${abr20}, ${snap(assinAbr)}::text::jsonb, ${JSON.stringify(assinAbr)}::text::jsonb) v`;
+      await sp`reset role`;
+      const [m] = await sp`select status, fechado_por from public.meses where id = ${abr20}`;
+      const [f] = await sp`select versao, venda_base::text, cmv_valor::text, cmv_pct::text, cmv_tipo, criado_por, snapshot->>'competencia' comp from public.fechamentos where mes_id = ${abr20}`;
+      const [a] = await sp`select depois->>'versao_fechamento' versao from public.auditoria where tabela = 'meses' and registro_id = ${abr20} and acao = 'close'`;
+      return { v, m, f, a };
+    }, (r) => r.v === 1 && r.m.status === "fechado" && r.m.fechado_por === U.admin && r.f.versao === 1 && r.f.venda_base === "9000.00" && r.f.cmv_valor === "3000.00" && r.f.cmv_tipo === "compras" && r.f.criado_por === U.admin && r.f.comp === "2020-04-01" && r.a.versao === "1");
+    await naoDeve(tx, "snapshot imutável: nem o postgres altera", async (sp) => { await sp`update public.fechamentos set cmv_valor = 1 where mes_id = ${abr20}`; }, "não pode ser alterado");
+    await naoDeve(tx, "snapshot imutável: nem o postgres apaga", async (sp) => { await sp`delete from public.fechamentos where mes_id = ${abr20}`; }, "não pode ser alterado");
+    await naoDeve(tx, "admin NÃO altera o snapshot (sem privilégio)", async (sp) => { await comoUsuario(sp, U.admin); await sp`update public.fechamentos set cmv_valor = 1 where mes_id = ${abr20}`; }, "permission denied");
+    await naoDeve(tx, "snapshot só entra por fechar_mes (insert direto recusado)", async (sp) => {
+      await sp`insert into public.fechamentos (mes_id, versao, snapshot, assinatura, venda_base, cmv_valor, cmv_tipo) values (${abr20}, 9, '{}', '{}', 1, 1, 'compras')`;
+    }, "Use a função fechar_mes");
+    await deve(tx, "gestor lê o snapshot (membro)", async (sp) => { await comoUsuario(sp, U.gestor); return sp`select versao from public.fechamentos where mes_id = ${abr20}`; }, (r) => r.length === 1);
+    await naoDeve(tx, "mês fechado trava vendas (sincronização também)", async (sp) => { await sp`insert into public.fechamento_turno (data, turno) values ('2020-04-30', 2)`; }, "está fechado");
+    await naoDeve(tx, "mês fechado trava a contagem", async (sp) => { await comoUsuario(sp, U.admin); await sp`select public.reabrir_contagem(${cAbr.id}, 'recontar')`; }, "está fechado");
+    await naoDeve(tx, "mês fechado trava as notas", async (sp) => { await comoUsuario(sp, U.admin); await sp`update public.notas set conferencia = 'pendente' where id = ${nAbr.id}`; }, "está fechado");
+    await naoDeve(tx, "fechar de novo um mês fechado → recusa", async (sp) => { await comoUsuario(sp, U.admin); await sp`select public.fechar_mes(${abr20}, ${snap(assinAbr)}::text::jsonb, ${JSON.stringify(assinAbr)}::text::jsonb)`; }, "já fechado");
+    await deve(tx, "reabrir (admin, com motivo) → aberto; o snapshot v1 continua guardado", async (sp) => {
+      await comoUsuario(sp, U.admin);
+      await sp`select public.reabrir_mes(${abr20}, 'nota da Frumar lançada errada')`;
+      await sp`reset role`;
+      const [m] = await sp`select status from public.meses where id = ${abr20}`;
+      const [f] = await sp`select count(*)::int n from public.fechamentos where mes_id = ${abr20}`;
+      const [a] = await sp`select motivo from public.auditoria where tabela = 'meses' and registro_id = ${abr20} and acao = 'reopen'`;
+      return { status: m.status, n: f.n, motivo: a?.motivo };
+    }, (r) => r.status === "aberto" && r.n === 1 && r.motivo === "nota da Frumar lançada errada");
+    await deve(tx, "mês reaberto aceita edição; ao refechar, novo snapshot (versão 2) com os dados novos", async (sp) => {
+      await comoUsuario(sp, U.admin);
+      await sp`update public.notas set valor = 2500, motivo_edicao = 'valor corrigido' where id = ${nAbr.id}`;
+      await sp`update public.notas set conferencia = 'conferida' where id = ${nAbr.id}`; // edição devolve a conferência para pendente
+      await sp`reset role`;
+      const a = await assinaturaDe(sp, abr20);
+      await comoUsuario(sp, U.admin);
+      const [{ v }] = await sp`select public.fechar_mes(${abr20}, ${snap(a)}::text::jsonb, ${JSON.stringify(a)}::text::jsonb) v`;
+      await sp`reset role`;
+      const fs = await sp`select versao, assinatura->>'notasTotal' total from public.fechamentos where mes_id = ${abr20} order by versao`;
+      return { v, fs };
+    }, (r) => r.v === 2 && r.fs.length === 2 && r.fs[0].total === "300000" && r.fs[1].total === "350000");
 
     console.log("\nSincronização e conflitos");
     const [conf] = await tx`insert into public.conflitos_venda (data, turno, origem, valores_manual, valores_planilha, total_manual, total_planilha, assinatura_planilha)

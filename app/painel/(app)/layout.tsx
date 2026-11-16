@@ -49,6 +49,9 @@ export default async function AreaProtegidaLayout({ children }: { children: Reac
                 <Link href="/painel/cmv/fornecedores" className="text-sm font-medium text-neutral-700 hover:underline">
                   Fornecedores
                 </Link>
+                <Link href="/painel/cmv/fechamento" className="text-sm font-medium text-neutral-700 hover:underline">
+                  Fechamento
+                </Link>
               </>
             )}
           </nav>
